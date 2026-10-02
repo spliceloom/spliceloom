@@ -1,0 +1,5 @@
+{
+  "tool": "stats",
+  "input": { "text": "Splice composes capabilities\nfor agents" },
+  "output": { "characters": 39, "words": 5, "lines": 2, "longestWord": "capabilities" }
+}

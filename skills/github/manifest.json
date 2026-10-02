@@ -1,0 +1,553 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "github",
+  "version": "0.1.0",
+  "description": "Official read-only GitHub tools over the public REST API (no token): repository details, a user's or organization's repositories, repository search.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": {
+    "type": "node",
+    "minNodeVersion": "22.18.0"
+  },
+  "permissions": {
+    "fs": {
+      "read": [],
+      "write": []
+    },
+    "network": [
+      "api.github.com"
+    ],
+    "env": []
+  },
+  "tools": [
+    {
+      "name": "get-repo",
+      "description": "Get details of a public GitHub repository (stars, forks, language, license, topics, dates).",
+      "entry": "tools/get-repo.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "maxLength": 39,
+            "description": "GitHub user or organization login",
+            "minLength": 1,
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 100,
+            "description": "Repository name",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "repo"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "object",
+            "properties": {
+              "fullName": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "owner": {
+                "type": "string"
+              },
+              "description": {
+                "description": "string or null"
+              },
+              "url": {
+                "type": "string",
+                "description": "https://github.com/... page"
+              },
+              "homepage": {
+                "description": "string or null"
+              },
+              "defaultBranch": {
+                "type": "string"
+              },
+              "language": {
+                "description": "string or null"
+              },
+              "license": {
+                "description": "SPDX id or null"
+              },
+              "topics": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "stars": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "forks": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "openIssues": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "archived": {
+                "type": "boolean"
+              },
+              "fork": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "pushedAt": {
+                "description": "ISO 8601 string or null"
+              }
+            },
+            "required": [
+              "fullName",
+              "name",
+              "owner",
+              "description",
+              "url",
+              "homepage",
+              "defaultBranch",
+              "language",
+              "license",
+              "topics",
+              "stars",
+              "forks",
+              "openIssues",
+              "archived",
+              "fork",
+              "createdAt",
+              "updatedAt",
+              "pushedAt"
+            ],
+            "additionalProperties": false
+          },
+          "rateLimit": {
+            "type": "object",
+            "description": "GitHub rate-limit headers of this response (anonymous: 60 requests/hour)",
+            "properties": {
+              "limit": {
+                "description": "integer or null"
+              },
+              "remaining": {
+                "description": "integer or null"
+              },
+              "resetAt": {
+                "description": "ISO 8601 string or null"
+              }
+            },
+            "required": [
+              "limit",
+              "remaining",
+              "resetAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "repository",
+          "rateLimit"
+        ],
+        "additionalProperties": false
+      },
+      "timeoutMs": 15000
+    },
+    {
+      "name": "list-repos",
+      "description": "List public repositories of a GitHub user or organization.",
+      "entry": "tools/list-repos.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "maxLength": 39,
+            "description": "GitHub user or organization login",
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "all",
+              "owner",
+              "member"
+            ],
+            "default": "owner",
+            "type": "string"
+          },
+          "sort": {
+            "enum": [
+              "created",
+              "updated",
+              "pushed",
+              "full_name"
+            ],
+            "default": "updated",
+            "type": "string"
+          },
+          "perPage": {
+            "default": 20,
+            "maximum": 50,
+            "type": "integer",
+            "minimum": 1
+          },
+          "page": {
+            "default": 1,
+            "maximum": 100,
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "owner"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "perPage": {
+            "type": "integer"
+          },
+          "repositories": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "fullName": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner": {
+                  "type": "string"
+                },
+                "description": {
+                  "description": "string or null"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "https://github.com/... page"
+                },
+                "homepage": {
+                  "description": "string or null"
+                },
+                "defaultBranch": {
+                  "type": "string"
+                },
+                "language": {
+                  "description": "string or null"
+                },
+                "license": {
+                  "description": "SPDX id or null"
+                },
+                "topics": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "stars": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "forks": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "openIssues": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "archived": {
+                  "type": "boolean"
+                },
+                "fork": {
+                  "type": "boolean"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "pushedAt": {
+                  "description": "ISO 8601 string or null"
+                }
+              },
+              "required": [
+                "fullName",
+                "name",
+                "owner",
+                "description",
+                "url",
+                "homepage",
+                "defaultBranch",
+                "language",
+                "license",
+                "topics",
+                "stars",
+                "forks",
+                "openIssues",
+                "archived",
+                "fork",
+                "createdAt",
+                "updatedAt",
+                "pushedAt"
+              ],
+              "additionalProperties": false
+            },
+            "type": "array"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "rateLimit": {
+            "type": "object",
+            "description": "GitHub rate-limit headers of this response (anonymous: 60 requests/hour)",
+            "properties": {
+              "limit": {
+                "description": "integer or null"
+              },
+              "remaining": {
+                "description": "integer or null"
+              },
+              "resetAt": {
+                "description": "ISO 8601 string or null"
+              }
+            },
+            "required": [
+              "limit",
+              "remaining",
+              "resetAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "owner",
+          "page",
+          "perPage",
+          "repositories",
+          "hasMore",
+          "rateLimit"
+        ],
+        "additionalProperties": false
+      },
+      "timeoutMs": 15000
+    },
+    {
+      "name": "search-repositories",
+      "description": "Search public GitHub repositories with GitHub search syntax (e.g. 'mcp language:typescript stars:>100').",
+      "entry": "tools/search-repositories.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "maxLength": 256,
+            "description": "GitHub repository search query",
+            "minLength": 1,
+            "type": "string"
+          },
+          "sort": {
+            "enum": [
+              "best-match",
+              "stars",
+              "forks",
+              "updated"
+            ],
+            "default": "best-match",
+            "type": "string"
+          },
+          "order": {
+            "enum": [
+              "desc",
+              "asc"
+            ],
+            "default": "desc",
+            "type": "string"
+          },
+          "perPage": {
+            "default": 10,
+            "maximum": 50,
+            "type": "integer",
+            "minimum": 1
+          },
+          "page": {
+            "default": 1,
+            "maximum": 10,
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "totalCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "incompleteResults": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "perPage": {
+            "type": "integer"
+          },
+          "repositories": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "fullName": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner": {
+                  "type": "string"
+                },
+                "description": {
+                  "description": "string or null"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "https://github.com/... page"
+                },
+                "homepage": {
+                  "description": "string or null"
+                },
+                "defaultBranch": {
+                  "type": "string"
+                },
+                "language": {
+                  "description": "string or null"
+                },
+                "license": {
+                  "description": "SPDX id or null"
+                },
+                "topics": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "stars": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "forks": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "openIssues": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "archived": {
+                  "type": "boolean"
+                },
+                "fork": {
+                  "type": "boolean"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "pushedAt": {
+                  "description": "ISO 8601 string or null"
+                }
+              },
+              "required": [
+                "fullName",
+                "name",
+                "owner",
+                "description",
+                "url",
+                "homepage",
+                "defaultBranch",
+                "language",
+                "license",
+                "topics",
+                "stars",
+                "forks",
+                "openIssues",
+                "archived",
+                "fork",
+                "createdAt",
+                "updatedAt",
+                "pushedAt"
+              ],
+              "additionalProperties": false
+            },
+            "type": "array"
+          },
+          "rateLimit": {
+            "type": "object",
+            "description": "GitHub rate-limit headers of this response (anonymous: 60 requests/hour)",
+            "properties": {
+              "limit": {
+                "description": "integer or null"
+              },
+              "remaining": {
+                "description": "integer or null"
+              },
+              "resetAt": {
+                "description": "ISO 8601 string or null"
+              }
+            },
+            "required": [
+              "limit",
+              "remaining",
+              "resetAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "query",
+          "totalCount",
+          "incompleteResults",
+          "page",
+          "perPage",
+          "repositories",
+          "rateLimit"
+        ],
+        "additionalProperties": false
+      },
+      "timeoutMs": 15000
+    }
+  ]
+}

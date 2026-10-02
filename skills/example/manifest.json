@@ -1,0 +1,65 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "example",
+  "version": "0.1.1",
+  "description": "Official example skill: greetings and text statistics. No external APIs.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": { "type": "node" },
+  "permissions": {
+    "fs": { "read": [], "write": [] },
+    "network": [],
+    "env": []
+  },
+  "tools": [
+    {
+      "name": "hello",
+      "description": "Return a greeting for the given name.",
+      "entry": "tools/hello.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Who to greet" },
+          "excited": { "type": "boolean", "description": "End with an exclamation mark" }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "stats",
+      "description": "Count characters, words and lines in a piece of text.",
+      "entry": "tools/stats.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "maxLength": 100000, "description": "Text to analyze" }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "characters": { "type": "integer", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0 },
+          "lines": { "type": "integer", "minimum": 0 },
+          "longestWord": { "type": "string" }
+        },
+        "required": ["characters", "words", "lines", "longestWord"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 5000
+    }
+  ]
+}

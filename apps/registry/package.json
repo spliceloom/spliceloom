@@ -1,0 +1,36 @@
+{
+  "name": "@spliceloom/registry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Splice registry API: Web-standard handler, Cloudflare Worker (D1 + R2) and local Node.js adapters.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/fake-github.d.ts",
+      "default": "./dist/testing/fake-github.js"
+    }
+  },
+  "scripts": {
+    "dev": "node dist/main.js",
+    "seed": "node dist/seed.js"
+  },
+  "dependencies": {
+    "@spliceloom/core": "0.1.0",
+    "@spliceloom/mcp": "0.1.0",
+    "@spliceloom/spec": "0.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.144.0"
+  }
+}

@@ -1,0 +1,17 @@
+// Website (apps/site/dist: the landing page) on Cloudflare Workers static assets.
+// Build first: node apps/site/build.ts   (writes dist/ and dist-docs/; docs: wrangler.docs.jsonc)
+// spliceloom.com/docs/* and /skills/* redirect to docs.spliceloom.com (dist/_redirects).
+{
+  "name": "spliceloom",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "spliceloom.com", "custom_domain": true },
+    { "pattern": "www.spliceloom.com", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@spliceloom/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Splice SDK: search, install, load and run Splice skills programmatically.",
+  "license": "MIT",
+  "homepage": "https://docs.spliceloom.com/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@spliceloom/core": "0.1.0",
+    "@spliceloom/data": "0.1.0",
+    "@spliceloom/runtime": "0.1.0",
+    "@spliceloom/spec": "0.1.0"
+  }
+}

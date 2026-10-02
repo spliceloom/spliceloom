@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../spec" },
+    { "path": "../runtime" },
+    { "path": "../core" },
+    { "path": "../data" }, { "path": "../sdk" },
+    { "path": "../mcp" },
+    { "path": "../../apps/registry" }
+  ]
+}

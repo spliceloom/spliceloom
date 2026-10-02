@@ -1,0 +1,23 @@
+name: Feature request
+description: A capability, data source, skill or command Splice should offer.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The task or question, not the solution — e.g. "compare funding across venues for one market".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Command, SDK call, MCP tool or skill you have in mind. For data, name the provider and whether it has a free tier.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and the docs (https://docs.spliceloom.com).
+          required: true

@@ -1,0 +1,82 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "onchain",
+  "version": "0.1.0",
+  "description": "Official Robinhood Chain (4663) tools through the Splice capability broker: native balances, transactions with receipts, and token reports (RPC, Blockscout, CoinGecko, GoPlus on the host). No keys in the package.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": {
+    "type": "node",
+    "minNodeVersion": "22.18.0"
+  },
+  "permissions": {
+    "fs": {
+      "read": [],
+      "write": []
+    },
+    "network": [],
+    "env": [],
+    "capabilities": ["onchain.balance", "onchain.transaction", "onchain.token"]
+  },
+  "tools": [
+    {
+      "name": "balance",
+      "description": "Native ETH balance of an address on Robinhood Chain, pinned to the block it was read at (provenance.blockNumber).",
+      "entry": "tools/balance.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string", "minLength": 42, "maxLength": 42, "description": "0x-prefixed address" }
+        },
+        "required": ["address"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { wei, formatted, symbol } and provenance, or UNAVAILABLE/ERROR",
+        "properties": { "status": { "type": "string", "enum": ["LIVE", "CACHED", "UNAVAILABLE", "ERROR"] } },
+        "required": ["status"]
+      },
+      "timeoutMs": 30000
+    },
+    {
+      "name": "transaction",
+      "description": "A transaction and its receipt on Robinhood Chain (status success, reverted or pending).",
+      "entry": "tools/transaction.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "hash": { "type": "string", "minLength": 66, "maxLength": 66, "description": "0x-prefixed transaction hash" }
+        },
+        "required": ["hash"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data (transaction + receipt) and provenance, or UNAVAILABLE/ERROR",
+        "properties": { "status": { "type": "string", "enum": ["LIVE", "CACHED", "UNAVAILABLE", "ERROR"] } },
+        "required": ["status"]
+      },
+      "timeoutMs": 30000
+    },
+    {
+      "name": "token",
+      "description": "Report on a Robinhood Chain token: metadata, total supply, holders, price, DEX pools and security — one section per source, each with its own status and provenance.",
+      "entry": "tools/token.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string", "minLength": 42, "maxLength": 42, "description": "Token contract address" }
+        },
+        "required": ["address"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host composite { kind: \"composite\", sections: { metadata, totalSupply, holders, price, pools, security } } or an ERROR result for invalid input"
+      },
+      "timeoutMs": 60000
+    }
+  ]
+}

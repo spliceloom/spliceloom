@@ -1,0 +1,107 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "json",
+  "version": "0.1.1",
+  "description": "Official JSON utilities: parse, stringify (deterministic) and pick values by path. No permissions.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": { "type": "node", "minNodeVersion": "22.18.0" },
+  "permissions": {
+    "fs": { "read": [], "write": [] },
+    "network": [],
+    "env": []
+  },
+  "tools": [
+    {
+      "name": "parse",
+      "description": "Parse a JSON text into a structured value. Errors report the position of invalid syntax.",
+      "entry": "tools/parse.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "maxLength": 1000000, "description": "JSON text to parse (max 1,000,000 characters)" }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "value": { "description": "The parsed value" },
+          "type": { "type": "string", "enum": ["object", "array", "string", "number", "boolean", "null"] }
+        },
+        "required": ["value", "type"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "stringify",
+      "description": "Serialize a value to JSON text. With sortKeys the output is canonical (object keys sorted recursively).",
+      "entry": "tools/stringify.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "value": { "description": "Any JSON value" },
+          "indent": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0, "description": "Spaces per indentation level (0 = compact)" },
+          "sortKeys": { "type": "boolean", "default": false, "description": "Sort object keys recursively" }
+        },
+        "required": ["value"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0, "description": "UTF-8 size of text" }
+        },
+        "required": ["text", "bytes"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "pick",
+      "description": "Extract values from a JSON value by path, e.g. \"items[0].name\", \"owner.login\" or '[\"key.with.dots\"]'. Missing paths are reported, not errors.",
+      "entry": "tools/pick.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "value": { "description": "The JSON value to read from" },
+          "paths": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "description": "Paths: dot segments, [index] and [\"quoted key\"]; \"$\" is the whole value"
+          }
+        },
+        "required": ["value", "paths"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "found": { "type": "boolean" },
+                "value": { "description": "Present when found" }
+              },
+              "required": ["path", "found"],
+              "additionalProperties": false
+            }
+          },
+          "missing": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["results", "missing"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 5000
+    }
+  ]
+}

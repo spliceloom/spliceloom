@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://docs.spliceloom.com
+    about: Quickstart, CLI, SDK, MCP, skills and the security model.
+  - name: Report a vulnerability (private)
+    url: https://github.com/spliceloom/spliceloom/security/advisories/new
+    about: Security issues are handled privately — please do not open a public issue.

@@ -1,0 +1,53 @@
+{
+  "name": "spliceloom",
+  "private": true,
+  "description": "Splice — a composable capability layer for autonomous agents.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "workspaces": [
+    "packages/spec",
+    "packages/runtime",
+    "packages/core",
+    "packages/data",
+    "packages/sdk",
+    "packages/mcp",
+    "packages/cli",
+    "apps/registry"
+  ],
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -b && npm run build:worker",
+    "build:worker": "node scripts/wrangler.mjs deploy --dry-run --outdir dist-worker",
+    "typecheck": "node scripts/clean.mjs && tsc -b && tsc -p skills/tsconfig.json && tsc -p examples/tsconfig.json && tsc -p apps/site/tsconfig.json",
+    "lint": "npm run typecheck",
+    "clean": "node scripts/clean.mjs",
+    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 \"packages/*/dist/**/*.test.js\" \"apps/*/dist/**/*.test.js\" \"skills/*/tests/*.test.ts\" \"apps/site/tests/*.test.ts\"",
+    "test:live": "npm run build && node --test --test-reporter=spec --test-concurrency=1 \"scripts/live/*.live.test.ts\"",
+    "secret-scan": "node scripts/secret-scan.mjs",
+    "registry:seed": "node apps/registry/dist/seed.js",
+    "registry:dev": "node apps/registry/dist/main.js",
+    "registry:admin": "node apps/registry/dist/admin.js",
+    "registry:worker:setup": "node apps/registry/dist/worker-setup.js",
+    "registry:worker:dev": "node scripts/wrangler.mjs dev --port 8787",
+    "registry:deploy": "node scripts/wrangler.mjs deploy",
+    "registry:backup": "node scripts/backup.mjs",
+    "splice": "node packages/cli/dist/bin.js",
+    "site:build": "node apps/site/build.ts",
+    "site:serve": "node apps/site/serve.ts",
+    "pack:cli": "node scripts/pack-cli.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "typescript": "^7.0.2"
+  }
+}

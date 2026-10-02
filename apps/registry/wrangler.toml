@@ -1,0 +1,53 @@
+# Splice registry — Cloudflare Worker + D1 + (KV or R2).
+# Deployment steps: docs/deployment.md. Local dev: docs/local-development.md.
+name = "splice-registry"
+main = "src/worker.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+# registry.spliceloom.com (Cloudflare creates the DNS record and certificate); workers.dev stays on.
+routes = [{ pattern = "registry.spliceloom.com", custom_domain = true }]
+
+# Metadata: packages, versions, namespaces, users, token hashes.
+[[d1_databases]]
+binding = "DB"
+database_name = "splice-registry"
+# Created with `wrangler d1 create splice-registry` (not a secret: useless without account access).
+database_id = "ac55c6fc-2276-4899-b31e-b868b7d31e1d"
+migrations_dir = "migrations"
+
+# Package artifacts: GitHub Releases (one release per package, one .tar.gz asset per version).
+# The token is a secret: `wrangler secret put GITHUB_TOKEN` (fine-grained PAT, only this repository,
+# "Contents: Read and write"). R2 is NOT required.
+[vars]
+GITHUB_OWNER = "spliceloom"
+GITHUB_REPO = "splice-artifacts"
+
+# The Phase 2 KV artifact store (namespace 093aecd4e6e8456cba6df6c94a436c99) was migrated to GitHub
+# Releases on 2026-10-01 and unbound. To migrate from KV again, re-add:
+# [[kv_namespaces]]
+# binding = "ARTIFACTS_KV"
+# id = "093aecd4e6e8456cba6df6c94a436c99"
+
+# Optional alternative backend (not used; requires R2 billing). GitHub takes precedence when configured.
+# [[r2_buckets]]
+# binding = "ARTIFACTS"
+# bucket_name = "splice-artifacts"
+
+# Rate limiting.
+# Strict limits are enforced with D1 counters (src/ratelimit.ts): publishes per user (10/min) and
+# failed authentications per client IP (20 per 10 min). Override with [vars] PUBLISH_LIMIT_PER_MINUTE
+# and AUTH_FAILURES_PER_10_MINUTES.
+# The bindings below are coarse first-line limits per client IP (Workers Rate Limiting API: counted
+# per Cloudflare machine/location, i.e. approximate).
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "ADMIN_LIMITER"
+namespace_id = "1003"
+simple = { limit = 30, period = 60 }
+
+# Secret (not in this file): ADMIN_TOKEN_SHA256 — set with `wrangler secret put ADMIN_TOKEN_SHA256`.
+# Locally it is read from apps/registry/.dev.vars (git-ignored), created by `npm run registry:worker:setup`.

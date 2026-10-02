@@ -1,0 +1,5 @@
+{
+  "tool": "read",
+  "description": "Read a file from the workspace/ sandbox.",
+  "input": { "path": "notes/today.md" }
+}

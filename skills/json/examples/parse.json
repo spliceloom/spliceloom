@@ -1,0 +1,5 @@
+{
+  "tool": "parse",
+  "input": { "text": "{\"name\":\"splice\",\"tags\":[\"agents\",\"skills\"]}" },
+  "output": { "value": { "name": "splice", "tags": ["agents", "skills"] }, "type": "object" }
+}

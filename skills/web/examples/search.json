@@ -1,0 +1,4 @@
+{
+  "tool": "search",
+  "input": { "query": "Robinhood Chain documentation", "limit": 3 }
+}

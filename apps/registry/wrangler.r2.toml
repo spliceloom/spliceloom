@@ -1,0 +1,21 @@
+# Test-only configuration: the same Worker with artifacts in R2 instead of KV.
+# Used by packages/cli/src/worker-e2e.test.ts to keep the R2 adapter covered locally
+# (wrangler emulates R2 without an account). Not used for deployment.
+name = "splice-registry-r2-test"
+main = "src/worker.ts"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "splice-registry-r2-test"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "splice-artifacts-test"
+
+# Deliberately tiny so the tests can observe 429 responses from the D1-backed limiters.
+[vars]
+PUBLISH_LIMIT_PER_MINUTE = "2"
+AUTH_FAILURES_PER_10_MINUTES = "3"

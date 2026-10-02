@@ -1,0 +1,16 @@
+{
+  "tool": "pick",
+  "input": {
+    "value": { "full_name": "spliceloom/splice-artifacts", "owner": { "login": "spliceloom" }, "topics": ["agents"] },
+    "paths": ["full_name", "owner.login", "topics[0]", "license.spdx_id"]
+  },
+  "output": {
+    "results": [
+      { "path": "full_name", "found": true, "value": "spliceloom/splice-artifacts" },
+      { "path": "owner.login", "found": true, "value": "spliceloom" },
+      { "path": "topics[0]", "found": true, "value": "agents" },
+      { "path": "license.spdx_id", "found": false }
+    ],
+    "missing": ["license.spdx_id"]
+  }
+}

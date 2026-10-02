@@ -1,0 +1,5 @@
+{
+  "tool": "get",
+  "description": "Fetch a public JSON document; the body is parsed into `json`.",
+  "input": { "url": "https://api.github.com/repos/spliceloom/splice-artifacts", "headers": { "accept": "application/json" }, "timeoutMs": 10000 }
+}

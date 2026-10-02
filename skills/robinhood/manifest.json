@@ -1,0 +1,493 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "robinhood",
+  "version": "0.1.0",
+  "description": "Official Robinhood Chain toolkit through the Splice capability broker: every token (trending, new, gainers, holders), token research reports, whale trades, stock tokens from every source, perps and funding, DeFi and global markets. Providers and keys stay on the host.",
+  "license": "MIT",
+  "homepage": "https://github.com/spliceloom",
+  "runtime": {
+    "type": "node",
+    "minNodeVersion": "22.18.0"
+  },
+  "permissions": {
+    "fs": {
+      "read": [],
+      "write": []
+    },
+    "network": [],
+    "env": [],
+    "capabilities": [
+      "tokens.rank",
+      "tokens.details",
+      "tokens.report",
+      "tokens.whales",
+      "stock.quote",
+      "perps.markets",
+      "perps.funding",
+      "defi.overview",
+      "global.overview"
+    ]
+  },
+  "tools": [
+    {
+      "name": "trending",
+      "description": "Trending tokens on Robinhood Chain (Codex trending score): price, % change 1h/4h/12h/24h, volume, liquidity, market cap, holders, buys/sells, age. Thin and potential-scam tokens are filtered out.",
+      "entry": "tools/trending.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "window": {
+            "type": "string",
+            "enum": [
+              "h1",
+              "h4",
+              "h12",
+              "h24"
+            ],
+            "description": "Time window (default h24; hot defaults to h1)"
+          },
+          "minLiquidity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { tokens[] } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "rank",
+      "description": "Rank every Robinhood Chain token: trending, hot, new, gainers, losers, volume, holders, mcap, txns, buyers (Codex).",
+      "entry": "tools/rank.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trending",
+              "hot",
+              "new",
+              "gainers",
+              "losers",
+              "volume",
+              "holders",
+              "mcap",
+              "txns",
+              "buyers"
+            ]
+          },
+          "window": {
+            "type": "string",
+            "enum": [
+              "h1",
+              "h4",
+              "h12",
+              "h24"
+            ],
+            "description": "Time window (default h24; hot defaults to h1)"
+          },
+          "minLiquidity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { tokens[], filters } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "token",
+      "description": "One token by symbol or address: live stats, metadata and links, pairs, recent trades and a 24h hourly chart (Codex).",
+      "entry": "tools/token.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Token symbol (e.g. PONS) or 0x address on Robinhood Chain"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with a composite of sections { stats, info, pairs, trades, chart } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "report",
+      "description": "Research and risk report: market stats (Codex), GoPlus security flags (honeypot, taxes, mint, owner powers, holder concentration, LP lock), verified source (Blockscout), pools. Each flag names its provider field.",
+      "entry": "tools/report.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Token symbol (e.g. PONS) or 0x address on Robinhood Chain"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with { kind: report, flags[], sections } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "whales",
+      "description": "Large trades of a token in its latest ~100 swaps (Codex): trades at or above minUsd, buy/sell totals, net flow, biggest wallets.",
+      "entry": "tools/whales.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Token symbol (e.g. PONS) or 0x address on Robinhood Chain"
+          },
+          "minUsd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Minimum trade size in USD (default 5000)"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { trades[], buyUsd, sellUsd, netFlowUsd, wallets[] } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "stock",
+      "description": "A Robinhood Stock Token (TSLA, NVDA, SPY…) from every source separately: Robinhood official, Chainlink, DEX market, Codex, DefiLlama and the underlying US stock (Finnhub). Never averaged.",
+      "entry": "tools/stock.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 42,
+            "description": "Stock token symbol or address"
+          },
+          "session": {
+            "type": "string",
+            "enum": [
+              "regular",
+              "extended",
+              "overnight"
+            ]
+          }
+        },
+        "required": [
+          "symbol"
+        ],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with a composite of per-source sections and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "perps",
+      "description": "Perpetual (and spot) markets on Lighter — venue robinhood (Robinhood Chain deployment, default) or mainnet: mark price, 24h change, volume, open interest (USD), trades.",
+      "entry": "tools/perps.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "venue": {
+            "type": "string",
+            "enum": [
+              "robinhood",
+              "mainnet"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "perp",
+              "spot",
+              "all"
+            ]
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "volume",
+              "oi",
+              "change",
+              "losers"
+            ]
+          },
+          "search": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { markets[] } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "funding",
+      "description": "Funding rates (percent per funding interval) on Lighter next to Binance, Bybit and Hyperliquid.",
+      "entry": "tools/funding.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "venue": {
+            "type": "string",
+            "enum": [
+              "robinhood",
+              "mainnet"
+            ]
+          },
+          "search": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { rates[] } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "defi",
+      "description": "Robinhood Chain DeFi from DefiLlama: TVL with 1d/7d/30d change, DEX volume, fees, stablecoin supply.",
+      "entry": "tools/defi.ts",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with a composite { tvl, dexVolume, fees, stablecoins } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    },
+    {
+      "name": "markets",
+      "description": "Global markets: crypto market cap, volume and dominance (CoinGecko), Fear & Greed index, top coins, US stocks/ETFs with 24h change (Chainlink).",
+      "entry": "tools/markets.ts",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with a composite { crypto, sentiment, majors, equities } and provenance, or UNAVAILABLE/ERROR",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIVE",
+              "CACHED",
+              "UNAVAILABLE",
+              "ERROR"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "timeoutMs": 45000
+    }
+  ]
+}

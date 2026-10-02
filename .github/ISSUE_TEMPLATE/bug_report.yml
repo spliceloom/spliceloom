@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in the CLI, SDK, MCP server, registry or an official skill does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Security issues:** please do not open a public issue — use
+        [private vulnerability reporting](https://github.com/spliceloom/spliceloom/security/advisories/new).
+        Never paste API keys, registry tokens or `.env` contents.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (splice)
+        - SDK (@spliceloom/sdk)
+        - MCP server
+        - Live data / providers
+        - Registry
+        - Official skill
+        - Website / docs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command or code you ran and the output you got (use `--json` for full results).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `splice --version`
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS and `node --version`
+      placeholder: "Windows 11, Node.js 24.21.0"
+    validations:
+      required: true

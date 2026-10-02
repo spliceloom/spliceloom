@@ -1,0 +1,5 @@
+{
+  "tool": "write",
+  "description": "Create workspace/notes/today.md (fails if it already exists).",
+  "input": { "path": "notes/today.md", "content": "# Notes\n\n- installed @splice/files\n" }
+}

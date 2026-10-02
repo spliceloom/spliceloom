@@ -1,0 +1,5 @@
+{
+  "tool": "list-repos",
+  "description": "Most recently updated public repositories of an organization.",
+  "input": { "owner": "nodejs", "perPage": 5 }
+}

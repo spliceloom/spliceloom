@@ -1,0 +1,5 @@
+{
+  "tool": "post",
+  "description": "POST a JSON body to a public echo service and return its response.",
+  "input": { "url": "https://httpbin.org/post", "json": { "hello": "splice" }, "maxBytes": 65536 }
+}

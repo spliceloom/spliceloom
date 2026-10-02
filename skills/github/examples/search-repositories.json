@@ -1,0 +1,5 @@
+{
+  "tool": "search-repositories",
+  "description": "Search with GitHub query syntax, sorted by stars.",
+  "input": { "query": "model context protocol language:typescript", "sort": "stars", "perPage": 5 }
+}

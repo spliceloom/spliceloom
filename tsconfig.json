@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/spec" },
+    { "path": "packages/runtime" },
+    { "path": "packages/core" },
+    { "path": "packages/data" },
+    { "path": "packages/sdk" },
+    { "path": "packages/mcp" },
+    { "path": "apps/registry" },
+    { "path": "packages/cli" }
+  ]
+}

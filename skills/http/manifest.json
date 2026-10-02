@@ -1,0 +1,114 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "http",
+  "version": "0.1.0",
+  "description": "Official HTTP client: GET and POST to public http(s) URLs with timeouts and response size limits. Private and local network targets are blocked by the Splice sandbox.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": { "type": "node", "minNodeVersion": "22.18.0" },
+  "permissions": {
+    "fs": { "read": [], "write": [] },
+    "network": ["*"],
+    "env": []
+  },
+  "tools": [
+    {
+      "name": "get",
+      "description": "Send an HTTP GET request to a public http(s) URL and return status, selected headers and the body (JSON is parsed automatically).",
+      "entry": "tools/get.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "minLength": 8, "maxLength": 2048, "description": "Absolute http(s) URL on a public host" },
+          "headers": {
+            "type": "object",
+            "description": "Optional request headers (only these names; Authorization and Cookie cannot be sent)",
+            "properties": {
+              "accept": { "type": "string", "maxLength": 512 },
+              "accept-language": { "type": "string", "maxLength": 512 },
+              "if-none-match": { "type": "string", "maxLength": 512 },
+              "if-modified-since": { "type": "string", "maxLength": 512 },
+              "user-agent": { "type": "string", "maxLength": 512 }
+            },
+            "additionalProperties": false
+          },
+          "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 15000, "default": 10000, "description": "Time limit for the complete response" },
+          "maxBytes": { "type": "integer", "minimum": 1, "maximum": 524288, "default": 262144, "description": "Maximum response body size" },
+          "responseType": { "type": "string", "enum": ["auto", "json", "text"], "default": "auto", "description": "auto: parse JSON content types, text for textual types, base64 otherwise" }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "description": "Final URL after redirects" },
+          "status": { "type": "integer" },
+          "statusText": { "type": "string" },
+          "ok": { "type": "boolean", "description": "true for 2xx" },
+          "redirected": { "type": "boolean" },
+          "headers": { "type": "object", "description": "content-type, content-length, etag, last-modified, cache-control, date, location, retry-after (when present)" },
+          "bodyType": { "type": "string", "enum": ["json", "text", "base64", "empty"] },
+          "json": { "description": "Parsed body when bodyType is json" },
+          "text": { "type": "string" },
+          "base64": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["url", "status", "statusText", "ok", "redirected", "headers", "bodyType", "bytes"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 20000
+    },
+    {
+      "name": "post",
+      "description": "Send an HTTP POST request with a JSON or text body to a public http(s) URL and return status, selected headers and the body.",
+      "entry": "tools/post.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "minLength": 8, "maxLength": 2048, "description": "Absolute http(s) URL on a public host" },
+          "json": { "description": "Body sent as application/json (mutually exclusive with text)" },
+          "text": { "type": "string", "maxLength": 1000000, "description": "Body sent as text (mutually exclusive with json)" },
+          "contentType": { "type": "string", "maxLength": 200, "description": "Content-Type for a text body (default text/plain; charset=utf-8)" },
+          "headers": {
+            "type": "object",
+            "description": "Optional request headers (only these names; Authorization and Cookie cannot be sent)",
+            "properties": {
+              "accept": { "type": "string", "maxLength": 512 },
+              "accept-language": { "type": "string", "maxLength": 512 },
+              "if-none-match": { "type": "string", "maxLength": 512 },
+              "if-modified-since": { "type": "string", "maxLength": 512 },
+              "user-agent": { "type": "string", "maxLength": 512 }
+            },
+            "additionalProperties": false
+          },
+          "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 15000, "default": 10000 },
+          "maxBytes": { "type": "integer", "minimum": 1, "maximum": 524288, "default": 262144 },
+          "responseType": { "type": "string", "enum": ["auto", "json", "text"], "default": "auto" }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "status": { "type": "integer" },
+          "statusText": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "redirected": { "type": "boolean" },
+          "headers": { "type": "object" },
+          "bodyType": { "type": "string", "enum": ["json", "text", "base64", "empty"] },
+          "json": { "description": "Parsed body when bodyType is json" },
+          "text": { "type": "string" },
+          "base64": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["url", "status", "statusText", "ok", "redirected", "headers", "bodyType", "bytes"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 20000
+    }
+  ]
+}

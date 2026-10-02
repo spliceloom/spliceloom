@@ -1,0 +1,5 @@
+{
+  "tool": "hello",
+  "input": { "name": "Dim", "excited": true },
+  "output": { "message": "Hello, Dim!" }
+}

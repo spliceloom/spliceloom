@@ -1,0 +1,32 @@
+{
+  "name": "@spliceloom/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Splice core: project files, registry client, installer and packer.",
+  "license": "MIT",
+  "homepage": "https://docs.spliceloom.com/architecture",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@spliceloom/runtime": "0.1.0",
+    "@spliceloom/spec": "0.1.0"
+  }
+}

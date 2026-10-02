@@ -1,0 +1,47 @@
+{
+  "name": "@spliceloom/cli",
+  "version": "0.2.0",
+  "private": true,
+  "description": "The splice command line interface.",
+  "license": "MIT",
+  "homepage": "https://docs.spliceloom.com/quickstart",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "bin": {
+    "splice": "dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@spliceloom/core": "0.1.0",
+    "@spliceloom/mcp": "0.1.0",
+    "@spliceloom/data": "0.1.0",
+    "@spliceloom/sdk": "0.1.0",
+    "@spliceloom/runtime": "0.1.0",
+    "@spliceloom/spec": "0.1.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "@spliceloom/registry": "0.1.0",
+    "wrangler": "4.144.0"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@spliceloom/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Model Context Protocol for Splice: protocol core, stdio and Streamable HTTP transports, installed-skills backend.",
+  "license": "MIT",
+  "homepage": "https://docs.spliceloom.com/mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./dist/http.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@spliceloom/data": "0.1.0",
+    "@spliceloom/sdk": "0.1.0",
+    "@spliceloom/spec": "0.1.0"
+  },
+  "devDependencies": {
+    "@spliceloom/core": "0.1.0"
+  }
+}

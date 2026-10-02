@@ -1,0 +1,5 @@
+{
+  "tool": "list",
+  "description": "List the whole workspace/ sandbox recursively.",
+  "input": { "recursive": true }
+}

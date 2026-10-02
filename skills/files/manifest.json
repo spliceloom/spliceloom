@@ -1,0 +1,112 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "files",
+  "version": "0.1.1",
+  "description": "Official file tools: read, write and list files inside the project's workspace/ sandbox directory only. Credential files are always refused.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": { "type": "node", "minNodeVersion": "22.18.0" },
+  "permissions": {
+    "fs": { "read": ["workspace"], "write": ["workspace"] },
+    "network": [],
+    "env": []
+  },
+  "tools": [
+    {
+      "name": "read",
+      "description": "Read a file from the workspace/ sandbox. Paths are relative to workspace/; absolute paths, '..' and credential files are refused.",
+      "entry": "tools/read.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Path relative to workspace/, e.g. data/report.json" },
+          "encoding": { "type": "string", "enum": ["utf8", "base64"], "default": "utf8" },
+          "maxBytes": { "type": "integer", "minimum": 1, "maximum": 524288, "default": 262144, "description": "Refuse files larger than this" }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "size": { "type": "integer", "minimum": 0 },
+          "encoding": { "type": "string", "enum": ["utf8", "base64"] },
+          "content": { "type": "string" },
+          "modifiedAt": { "type": "string", "description": "ISO 8601 timestamp" }
+        },
+        "required": ["path", "size", "encoding", "content", "modifiedAt"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 10000
+    },
+    {
+      "name": "write",
+      "description": "Write a file inside the workspace/ sandbox. mode: create (default, fails if the file exists), overwrite or append.",
+      "entry": "tools/write.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Path relative to workspace/" },
+          "content": { "type": "string", "maxLength": 1400000, "description": "File content (max 1 MiB after decoding)" },
+          "encoding": { "type": "string", "enum": ["utf8", "base64"], "default": "utf8" },
+          "mode": { "type": "string", "enum": ["create", "overwrite", "append"], "default": "create" },
+          "createDirs": { "type": "boolean", "default": true, "description": "Create missing parent directories" }
+        },
+        "required": ["path", "content"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0, "description": "Bytes written" },
+          "size": { "type": "integer", "minimum": 0, "description": "File size after writing" },
+          "created": { "type": "boolean" }
+        },
+        "required": ["path", "bytes", "size", "created"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 10000
+    },
+    {
+      "name": "list",
+      "description": "List a directory inside the workspace/ sandbox (sorted, optionally recursive). Credential-like names are hidden and counted.",
+      "entry": "tools/list.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "maxLength": 512, "default": ".", "description": "Directory relative to workspace/ (default: the workspace itself)" },
+          "recursive": { "type": "boolean", "default": false },
+          "maxEntries": { "type": "integer", "minimum": 1, "maximum": 2000, "default": 500 }
+        },
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "type": { "type": "string", "enum": ["file", "directory", "symlink", "other"] },
+                "size": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["path", "type", "size"],
+              "additionalProperties": false
+            }
+          },
+          "truncated": { "type": "boolean" },
+          "hidden": { "type": "integer", "minimum": 0, "description": "Entries hidden because they look like credentials" }
+        },
+        "required": ["path", "entries", "truncated", "hidden"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 10000
+    }
+  ]
+}

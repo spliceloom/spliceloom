@@ -1,0 +1,91 @@
+{
+  "specVersion": 1,
+  "namespace": "splice",
+  "name": "market",
+  "version": "0.1.0",
+  "description": "Official market data tools through the Splice capability broker: token prices, DEX pairs and OHLCV candles (CoinGecko, DexScreener, GeckoTerminal on the host). Robinhood Chain and other DEX networks; no keys in the package.",
+  "license": "MIT",
+  "homepage": "https://spliceloom.io",
+  "runtime": {
+    "type": "node",
+    "minNodeVersion": "22.18.0"
+  },
+  "permissions": {
+    "fs": {
+      "read": [],
+      "write": []
+    },
+    "network": [],
+    "env": [],
+    "capabilities": ["market.price", "market.pairs", "market.ohlcv"]
+  },
+  "tools": [
+    {
+      "name": "price",
+      "description": "Price of ETH or a token. Default network: Robinhood Chain (CoinGecko, then GeckoTerminal); other networks use provider ids (eth, base, solana…). Unlisted tokens are UNAVAILABLE — never estimated.",
+      "entry": "tools/price.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "minLength": 2, "maxLength": 100, "description": "ETH or a token address" },
+          "network": { "type": "string", "minLength": 1, "maxLength": 40, "description": "robinhood (default) or a provider network id" },
+          "vs": { "type": "string", "minLength": 3, "maxLength": 5, "description": "Quote currency (default usd)" }
+        },
+        "required": ["token"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { price, vs, … } and provenance, or UNAVAILABLE/ERROR",
+        "properties": { "status": { "type": "string", "enum": ["LIVE", "CACHED", "UNAVAILABLE", "ERROR"] } },
+        "required": ["status"]
+      },
+      "timeoutMs": 30000
+    },
+    {
+      "name": "pairs",
+      "description": "DEX pairs/pools of a token (DexScreener, then GeckoTerminal), each with the provider's price, liquidity, volume, transactions, FDV and market cap. Values are never averaged.",
+      "entry": "tools/pairs.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "network": { "type": "string", "minLength": 1, "maxLength": 40, "description": "robinhood or a provider network id" },
+          "token": { "type": "string", "minLength": 20, "maxLength": 100, "description": "Token address" }
+        },
+        "required": ["network", "token"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { network, token, pairs[] } and provenance, or UNAVAILABLE/ERROR",
+        "properties": { "status": { "type": "string", "enum": ["LIVE", "CACHED", "UNAVAILABLE", "ERROR"] } },
+        "required": ["status"]
+      },
+      "timeoutMs": 30000
+    },
+    {
+      "name": "candles",
+      "description": "OHLCV candles of a DEX pool (GeckoTerminal). timeframe day (aggregate 1), hour (1, 4, 12), minute (1, 5, 15); up to 1000 candles.",
+      "entry": "tools/candles.ts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "network": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "pool": { "type": "string", "minLength": 20, "maxLength": 100, "description": "Pool/pair address" },
+          "timeframe": { "type": "string", "enum": ["day", "hour", "minute"] },
+          "aggregate": { "type": "integer", "minimum": 1, "maximum": 15 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        },
+        "required": ["network", "pool"],
+        "additionalProperties": false
+      },
+      "output": {
+        "type": "object",
+        "description": "Host capability result: LIVE/CACHED with data { candles[] } and provenance, or UNAVAILABLE/ERROR",
+        "properties": { "status": { "type": "string", "enum": ["LIVE", "CACHED", "UNAVAILABLE", "ERROR"] } },
+        "required": ["status"]
+      },
+      "timeoutMs": 30000
+    }
+  ]
+}

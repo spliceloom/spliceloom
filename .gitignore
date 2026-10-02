@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build output (incl. the website build and the staged npm package)
+dist/
+dist-npm/
+dist-docs/
+dist-worker/
+*.tsbuildinfo
+
+# Wrangler local state (local D1/R2) and local-only secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+.dev.admin-token
+
+# Local registry data (SQLite DB + artifacts) and registry backups
+.data/
+backups/
+
+# Splice project state created by `splice init` / `splice add` in scratch dirs
+.splice/
+
+# Logs
+npm-debug.log*
+*.log
+
+# Environment / secrets — never commit
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local, not part of Splice (user tooling copied into this folder)
+self-improve/
+CLAUDE_REPO_LIBRARY*.md
+.claude/
+playground/
+
+# Third-party design references and screen recordings (not redistributable, not part of Splice)
+design/reference/
+/*.mp4

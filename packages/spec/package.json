@@ -1,0 +1,28 @@
+{
+  "name": "@spliceloom/spec",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Splice package specification: manifest v1, validation, naming, versions and bundle format.",
+  "license": "MIT",
+  "homepage": "https://docs.spliceloom.com/spec",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git",
+    "directory": "packages/spec"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

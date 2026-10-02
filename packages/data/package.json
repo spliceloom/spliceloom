@@ -1,0 +1,35 @@
+{
+  "name": "@spliceloom/data",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Splice data layer: live Robinhood Chain, market, security and wallet data from real providers, with provenance.",
+  "license": "MIT",
+  "homepage": "https://docs.spliceloom.com/data-providers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spliceloom/spliceloom.git",
+    "directory": "packages/data"
+  },
+  "bugs": {
+    "url": "https://github.com/spliceloom/spliceloom/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@spliceloom/runtime": "0.1.0",
+    "@spliceloom/spec": "0.1.0"
+  }
+}

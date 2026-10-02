@@ -1,0 +1,5 @@
+{
+  "tool": "get-repo",
+  "description": "Details of a public repository.",
+  "input": { "owner": "spliceloom", "repo": "splice-artifacts" }
+}
