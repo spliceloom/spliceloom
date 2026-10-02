@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -293,5 +293,19 @@ describe("runtime", () => {
         return /SKILL\.md is missing/.test(details) && /entry file "tools\/a\.ts" is missing/.test(details);
       });
     });
+  });
+});
+
+describe("project root", () => {
+  it("is canonical: links, junctions and Windows short names are resolved before permissions are granted", () => {
+    const base = mkdtempSync(join(tmpdir(), "splice-root-"));
+    const real = join(base, "real");
+    mkdirSync(real);
+    const link = join(base, "link");
+    symlinkSync(real, link, "junction"); // a junction on Windows (no privileges needed), a symlink elsewhere
+    assert.equal(new SpliceRuntime({ projectRoot: link }).projectRoot, realpathSync.native(real));
+    // os.tmpdir() can itself be an 8.3 short path on Windows (C:\Users\RUNNER~1\…)
+    assert.equal(new SpliceRuntime({ projectRoot: base }).projectRoot, realpathSync.native(base));
+    rmSync(base, { recursive: true, force: true });
   });
 });

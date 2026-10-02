@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -93,9 +93,23 @@ export type ToolResult =
 
 const HOST_PATH = join(dirname(fileURLToPath(import.meta.url)), "host.mjs");
 
+/**
+ * The canonical form of a project directory: symlinks and junctions resolved and, on Windows, 8.3
+ * short names (`C:\Users\RUNNER~1\…`) expanded. Permission grants and the paths handed to tools must
+ * use the same form that `realpath` returns inside the tool, or in-sandbox paths look outside it.
+ */
+export function canonicalRoot(dir: string): string {
+  const abs = resolve(dir);
+  try {
+    return realpathSync.native(abs);
+  } catch {
+    return abs; // not created yet: used as given
+  }
+}
+
 /** Maps declared permissions onto Node.js permission-model flags. */
 export function buildNodeArgs(pkg: LoadedPackage, projectRoot: string, permissions: Permissions): string[] {
-  const root = resolve(projectRoot);
+  const root = canonicalRoot(projectRoot);
   const toAbs = (p: string) => (p === "." ? root : resolve(root, p));
   const read = new Set<string>([dirname(HOST_PATH), pkg.dir, ...permissions.fs.read.map(toAbs)]);
   const write = new Set<string>(permissions.fs.write.map(toAbs));
@@ -147,7 +161,7 @@ export class SpliceRuntime {
   private readonly maxCapabilityCalls: number;
 
   constructor(options: RuntimeOptions) {
-    this.projectRoot = resolve(options.projectRoot);
+    this.projectRoot = canonicalRoot(options.projectRoot);
     this.env = options.env ?? process.env;
     this.maxLogBytes = options.maxLogBytes ?? 64 * 1024;
     this.maxOutputBytes = options.maxOutputBytes ?? 1024 * 1024;
