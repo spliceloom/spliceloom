@@ -48,6 +48,14 @@ Then create the tarball:
 node scripts/pack-cli.mjs          # → dist-npm/spliceloom-cli-<version>.tgz
 ```
 
+The SDK is packed the same way (`@spliceloom/sdk` with the bundled `spec`, `runtime`, `core` and
+`data`; its version is `packages/sdk/package.json` → `version`):
+
+```sh
+node scripts/pack-cli.mjs --target sdk --dry-run --list
+node scripts/pack-cli.mjs --target sdk   # stages dist-npm/sdk/ → dist-npm/spliceloom-sdk-<version>.tgz
+```
+
 ### Local installation test
 
 Install the tarball into a throw-away prefix (your global installation is untouched) and smoke

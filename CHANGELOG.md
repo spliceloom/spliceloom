@@ -3,6 +3,15 @@
 Notable changes to the `splice` CLI (`@spliceloom/cli`) and the public registry. Official skills
 are versioned independently in the registry; their versions are listed per release.
 
+## 0.2.1 — 2026-10-03
+
+- Fix (Windows): tools could report `PATH_OUTSIDE_SANDBOX` for paths inside their sandbox when the
+  project directory was reached through an 8.3 short name (`C:\Users\RUNNER~1\…`), a junction or a
+  symlink. The runtime now resolves the project root to its canonical path before granting
+  permissions.
+- The TypeScript SDK is published as [`@spliceloom/sdk`](https://www.npmjs.com/package/@spliceloom/sdk) 0.1.0.
+- npm package metadata: repository, homepage and issue links.
+
 ## 0.2.0 — 2026-10-02
 
 Live market data, research tools and an AI agent over them.

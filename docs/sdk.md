@@ -9,8 +9,12 @@ itself is built on this SDK.
 
 ## Install
 
-Inside this monorepo the SDK is a workspace package (`npm install && npm run build`). It has no
-runtime dependencies beyond the other `@spliceloom/*` packages and needs Node.js ≥ 22.18.
+```sh
+npm install @spliceloom/sdk
+```
+
+Node.js ≥ 22.18. The package bundles the `@spliceloom/*` packages it needs and has no other runtime
+dependencies. Inside this monorepo it is also a workspace package (`npm install && npm run build`).
 
 ## Quick start
 
@@ -68,7 +72,7 @@ in `@spliceloom/core`.
 | `run("example.hello", input)` | `ToolResult` | shortcut for `load` + `skill.run` |
 | `publish(dir, { dryRun?, onStep? })` | `PublishResult` | requires a token unless `dryRun` |
 | `whoami()` | `WhoamiResponse` | |
-| `registry()` / `registryUrl()` | `RegistryClient` / `string` | low-level registry client |
+| `registry()` / `registryUrl()` | `Promise<RegistryClient>` / `Promise<string>` | low-level registry client |
 | `runtime()` | `SkillRuntime` | the runtime loaded skills use |
 
 `Skill`: `id`, `version`, `manifest`, `dir`, `tools`, `tool(name)` (accepts `hello`,

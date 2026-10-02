@@ -118,6 +118,10 @@ returns the result with provenance. [Host capabilities →](https://docs.splicel
 
 ## From code
 
+```sh
+npm install @spliceloom/sdk
+```
+
 ```ts
 import { Splice, isLive } from "@spliceloom/sdk";
 

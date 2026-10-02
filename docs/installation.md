@@ -47,10 +47,11 @@ Without `npm link` you can run the CLI directly with `node packages/cli/dist/bin
 
 ## The SDK
 
-Applications use the TypeScript SDK, `@spliceloom/sdk` (see [SDK](sdk.md)). It is not on npm
-yet; use it from a source checkout of
-[github.com/spliceloom/spliceloom](https://github.com/spliceloom/spliceloom) (`npm install && npm run build`,
-then depend on `packages/sdk`).
+Applications use the TypeScript SDK (see [SDK](sdk.md)):
+
+```sh
+npm install @spliceloom/sdk
+```
 
 ## Check the installation
 
