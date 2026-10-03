@@ -501,3 +501,60 @@
     });
   });
 })();
+
+// Registry catalogue search, copy buttons and the live registry status in the footer.
+(() => {
+  "use strict";
+  const run = () => {
+    // search the skills registry page
+    const filter = document.querySelector("[data-registry-filter]");
+    if (filter) {
+      const items = [...document.querySelectorAll("[data-filter-text]")];
+      const empty = document.querySelector("[data-registry-empty]");
+      filter.addEventListener("input", () => {
+        const q = filter.value.trim().toLowerCase();
+        let shown = 0;
+        for (const item of items) {
+          const match = !q || q.split(/\s+/).every((w) => item.getAttribute("data-filter-text").includes(w));
+          item.hidden = !match;
+          if (match) shown++;
+        }
+        if (empty) empty.hidden = shown > 0;
+      });
+    }
+    // copy install commands
+    for (const button of document.querySelectorAll("[data-copy]")) {
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(button.getAttribute("data-copy"));
+          button.textContent = "Copied";
+        } catch {
+          button.textContent = "Select and copy";
+        }
+        setTimeout(() => (button.textContent = "Copy"), 1600);
+      });
+    }
+    // registry status: one GET /health per page view (no cookies, no tracking)
+    const health = document.querySelector("[data-registry-health]");
+    const registry = document.querySelector('meta[name="splice:registry"]')?.getAttribute("content");
+    if (health && registry) {
+      const label = health.querySelector("span");
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      fetch(`${registry.replace(/\/$/, "")}/health`, { credentials: "omit", cache: "no-store", signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((body) => {
+          const up = body && body.status === "ok";
+          health.classList.add(up ? "is-up" : "is-down");
+          label.textContent = up ? "Registry operational" : "Registry degraded";
+        })
+        .catch(() => {
+          health.classList.add("is-down");
+          label.textContent = "Registry unreachable";
+        })
+        .finally(() => clearTimeout(timer));
+    }
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  else run();
+})();

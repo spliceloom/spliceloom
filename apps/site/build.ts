@@ -15,7 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./src/markdown.ts";
-import { docLoc, href, placeOf, renderDocPage, renderLanding, renderNotFound, type NavGroup, type SiteConfig } from "./src/pages.ts";
+import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
 import { loadProviders } from "./src/providers.ts";
 import { loadSnapshot, type RegistrySnapshot, type SkillView } from "./src/registry.ts";
 import { BROKER_CAPABILITIES } from "../../packages/spec/dist/index.js";
@@ -38,7 +38,7 @@ export const DOC_NAV: NavGroup[] = [
   { title: "Providers", items: [{ slug: "providers-ai", title: "AI" }, { slug: "providers-github", title: "GitHub" }, { slug: "providers-web", title: "Web" }, { slug: "providers-market", title: "Market data" }, { slug: "providers-onchain", title: "Onchain" }, { slug: "markets", title: "Tokens, global & dashboard" }, { slug: "stock-tokens", title: "Stock tokens & rankings" }, { slug: "robinhood-chain", title: "Robinhood Chain" }] },
   { title: "Security", items: [{ slug: "security", title: "Trust model" }, { slug: "sandbox", title: "Sandbox" }, { slug: "network-security", title: "Network security" }, { slug: "trust", title: "Verification" }] },
   { title: "Registry", items: [{ slug: "public-registry", title: "Public registry" }, { slug: "publishing", title: "Publishing" }, { slug: "private-registry", title: "Private registry" }, { slug: "organizations", title: "Organizations" }, { slug: "releasing", title: "Releasing the CLI" }] },
-  { title: "Reference", items: [{ slug: "api", title: "Registry API" }, { slug: "environment-variables", title: "Environment variables" }, { slug: "overview", title: "Project history" }, { slug: "faq", title: "FAQ" }] },
+  { title: "Reference", items: [{ slug: "api", title: "Registry API" }, { slug: "environment-variables", title: "Environment variables" }, { slug: "overview", title: "Project history" }, { slug: "changelog", title: "Changelog" }, { slug: "faq", title: "FAQ" }] },
   {
     title: "Official skills",
     items: [
@@ -61,6 +61,10 @@ const EXTRA_DOCS: string[] = [];
 export const PRIVATE_DOCS = ["auth", "registry", "deployment", "local-development"];
 
 export const PUBLISHED_DOCS = [...DOC_NAV.flatMap((g) => g.items.map((i) => i.slug)).filter((s) => !s.startsWith("skills/")), ...EXTRA_DOCS];
+/** Demo videos shown on docs pages (after the first paragraph). */
+export const DOC_VIDEOS: Record<string, string[]> = { quickstart: ["how-it-works"], markets: ["tokens", "research", "markets"], "stock-tokens": ["stocks"], ask: ["ask"] };
+/** Docs pages whose Markdown lives outside docs/ (repository root). */
+export const DOC_SOURCES: Record<string, string> = { changelog: "CHANGELOG.md" };
 export const SKILL_PAGES = ["json", "http", "files", "github", "web", "market", "onchain", "robinhood"];
 
 /**
@@ -188,6 +192,35 @@ function outputDir(out: string) {
 }
 
 /** Styles, script, fonts, favicon and headers: each host serves its own copy. */
+/** Demo videos and posters (public/video), served by both hosts. */
+function copyVideos(target: ReturnType<typeof outputDir>): void {
+  for (const file of readdirSync(join(here, "public", "video"))) target.copy(join(here, "public", "video", file), `assets/video/${file}`);
+}
+
+/** Blog posts: content/blog/*.md with a front-matter block (title, description, date), newest first. */
+function loadPosts(config: SiteConfig): BlogPost[] {
+  const dir = join(here, "content", "blog");
+  if (!existsSync(dir)) return [];
+  const loc = { host: "site" as const, dir: "blog" as const };
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => {
+      const raw = readFileSync(join(dir, f), "utf8").replace(/\r\n/g, "\n");
+      const m = /^---\n([\s\S]*?)\n---\n/.exec(raw);
+      const meta = Object.fromEntries((m?.[1] ?? "").split("\n").map((l) => l.split(/:\s(.*)/s).slice(0, 2) as [string, string]));
+      const body = m ? raw.slice(m[0].length) : raw;
+      const rendered = renderMarkdown(body, {
+        rewriteLink: (url: string) => {
+          if (/^(https?:|mailto:)/.test(url)) return url;
+          const doc = /(?:^|\/)docs\/([\w-]+)\.md$/.exec(url);
+          return doc && PUBLISHED_DOCS.includes(doc[1]!) ? href(config, loc, `docs/${doc[1]}`) : null;
+        },
+      });
+      return { slug: f.replace(/\.md$/, ""), title: meta.title ?? f, description: meta.description ?? "", date: meta.date ?? "", html: rendered.html };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
 function copyCommonAssets(target: ReturnType<typeof outputDir>): void {
   for (const asset of ["styles.css", "app.js"]) target.copy(join(here, "public", asset), `assets/${asset}`);
   target.copy(join(here, "public", "favicon.svg"), "favicon.svg");
@@ -215,11 +248,19 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   // Hero video (licensed stock footage, graded; see public/media/CREDITS.md) and its poster.
   for (const media of readdirSync(join(here, "public", "media"))) site.copy(join(here, "public", "media", media), `assets/media/${media}`);
   site.copy(join(here, "public", "og", "og-landing.png"), "assets/og-landing.png");
+  copyVideos(site);
+  for (const file of readdirSync(join(here, "public", "brand"))) site.copy(join(here, "public", "brand", file), `assets/brand/${file}`);
   site.write("data/registry.json", JSON.stringify(snapshot, null, 2) + "\n");
+  // registry catalogue, brand kit, blog
+  site.write("registry.html", renderRegistry(config, snapshot, SKILL_PAGES));
+  site.write("brand.html", renderBrand(config));
+  const posts = loadPosts(config);
+  for (const post of posts) site.write(`blog/${post.slug}.html`, renderBlogPost(config, post));
+  site.write("blog.html", renderBlogIndex(config, posts));
   // Earlier docs URLs on the site (spliceloom.com/docs/…, /skills/…) move to the docs host.
   site.write("_redirects", [`/docs ${docsBase}/ 301`, `/docs/introduction ${docsBase}/ 301`, `/docs/:slug ${docsBase}/:slug 301`, `/skills/:name ${docsBase}/skills/:name 301`, ""].join("\n"));
   site.write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${siteBase}/sitemap.xml\n`);
-  site.write("sitemap.xml", sitemap(siteBase, [""]));
+  site.write("sitemap.xml", sitemap(siteBase, ["", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
 
   // ---- the docs host: docs at the root (introduction is its home page), skill pages under skills/
   const docs = outputDir(options.docsOut);
@@ -228,11 +269,11 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   const fileOf = (path: string) => (path === "" ? "index.html" : `${path}.html`);
   const docPaths: string[] = [];
   for (const slug of PUBLISHED_DOCS) {
-    const source = readFileSync(join(REPO, "docs", `${slug}.md`), "utf8");
+    const source = readFileSync(join(REPO, DOC_SOURCES[slug] ?? join("docs", `${slug}.md`)), "utf8");
     const { loc, path, self } = docLoc("docs", slug);
     const rendered = renderMarkdown(source, { rewriteLink: linkRewriter("docs", self, (target) => href(config, loc, target)) });
     searchIndex.push({ t: rendered.title || slug, u: path, g: groupOf(slug), h: rendered.headings.filter((h) => h.level === 2).map((h) => `${h.text}#${h.id}`), x: plainText(source).slice(0, 600) });
-    docs.write(fileOf(path), renderDocPage(config, { slug, title: rendered.title || slug, description: descriptionOf(source), html: rendered.html, nav: DOC_NAV, headings: rendered.headings, section: "docs" }));
+    docs.write(fileOf(path), renderDocPage(config, { slug, title: rendered.title || slug, description: descriptionOf(source), html: rendered.html, nav: DOC_NAV, headings: rendered.headings, section: "docs", ...(DOC_VIDEOS[slug] ? { videos: DOC_VIDEOS[slug] } : {}) }));
     if (!EXTRA_DOCS.includes(slug)) docPaths.push(path);
   }
   for (const name of SKILL_PAGES) {
@@ -246,6 +287,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   }
   docs.write("404.html", renderNotFound(config, "docs"));
   copyCommonAssets(docs);
+  copyVideos(docs);
   docs.copy(join(here, "public", "og", "og-docs.png"), "assets/og-docs.png");
   docs.write("assets/search-index.json", JSON.stringify(searchIndex));
   // docs.<domain>/docs/<page> and /introduction land on the clean docs URL.

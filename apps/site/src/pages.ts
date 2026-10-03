@@ -48,8 +48,8 @@ const e = escapeHtml;
 export type Host = "site" | "docs";
 export interface PageLoc {
   host: Host;
-  /** Directory of the page on its host ("" or "skills"). */
-  dir: "" | "skills";
+  /** Directory of the page on its host ("", "skills" or "blog"; one level deep). */
+  dir: "" | "skills" | "blog";
   /** Root-relative links (`/assets/…`): for the 404 page, served at any depth. */
   rooted?: boolean;
 }
@@ -168,13 +168,13 @@ function footer(loc: PageLoc, config: SiteConfig): string {
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
-        <div><h2>Project</h2><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
+        <div><h2>Project</h2><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
     </div>
     <div class="footer-meta">
       <p>Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood Markets, Inc.; Robinhood Chain is referenced as a public network that Splice can read data from.</p>
       <p class="footer-notice">Splice has not launched a token. A contract address will only ever be announced on spliceloom.com and <a href="https://x.com/spliceloom" rel="noopener">@spliceloom on X</a> — any token claiming to be Splice before that is not ours.</p>
-      <p><span>MIT licensed</span><span>Developer preview</span><span>Registry <code>${e(new URL(config.registry).host)}</code></span></p>
+      <p><span>MIT licensed</span><span>Developer preview</span><span>Registry <code>${e(new URL(config.registry).host)}</code></span><span class="health" data-registry-health><i aria-hidden="true"></i><span>Registry status</span></span></p>
     </div>
   </div>
 </footer>`;
@@ -237,6 +237,37 @@ const STEPS: Array<[string, string, string]> = [
 
 /** Skills presented first on the landing page; the rest of the registry follows. */
 const FEATURED_SKILLS = ["@splice/robinhood", "@splice/onchain", "@splice/market", "@splice/web"];
+
+/** The latest release, shown as a pill on the landing page (keep in step with CHANGELOG.md). */
+export const WHATS_NEW = { label: "New", text: "TypeScript SDK on npm · CLI 0.2.1", path: "docs/changelog" };
+
+/** Demo videos (apps/site/public/video): real CLI recordings, no sound. */
+export const VIDEOS: Record<string, { title: string; caption: string }> = {
+  "how-it-works": { title: "How Splice works", caption: "Install, live data without keys, provider keys, verified skills, MCP and the SDK — real CLI output." },
+  tokens: { title: "Tokens", caption: "Every token on Robinhood Chain: trending, new, gainers, details and large trades." },
+  research: { title: "Research", caption: "Token reports, comparisons, a new-token radar and live alerts." },
+  stocks: { title: "Stock tokens", caption: "Robinhood Stock Tokens from every source, side by side — plus company data and oracle candles." },
+  markets: { title: "Markets", caption: "Perps and funding, DeFi, macro, global markets and the dashboard." },
+  ask: { title: "Ask", caption: "An AI agent that answers from live data tools, with sources and cost." },
+};
+
+/** A demo video: plays on demand (no autoplay, no sound), poster first. */
+export function videoFigure(config: SiteConfig, loc: PageLoc, name: string): string {
+  const v = VIDEOS[name];
+  if (!v) return "";
+  const a = (p: string) => href(config, loc, p);
+  return `<figure class="video-figure"><video controls playsinline preload="none" poster="${a(`assets/video/${name}.jpg`)}" aria-label="${e(v.title)}"><source src="${a(`assets/video/${name}.mp4`)}" type="video/mp4"></video><figcaption><strong>${e(v.title)}</strong> — ${e(v.caption)}</figcaption></figure>`;
+}
+
+/** Why Splice: calling providers directly vs through Splice (implemented behaviour only). */
+const WHY_ROWS: Array<[string, string, string]> = [
+  ["Keys", "Every agent and tool holds its own API keys.", "Keys stay in the host. A skill asks for a capability and gets the result, never the key."],
+  ["Trust", "Install code and hope it is what you expect.", "SHA-256, size, package and provenance are verified before a file is written."],
+  ["Isolation", "Tools run with all of your permissions.", "One sandboxed process per call, limited to the files, hosts and capabilities it declared."],
+  ["Data", "Numbers without context.", "Every result is LIVE, CACHED, UNAVAILABLE or ERROR, with its source and fetch time."],
+  ["Integration", "A new integration for every framework.", "One contract for the CLI, the TypeScript SDK and any MCP client."],
+  ["Reproducibility", "Whatever version happens to be latest.", "Exact versions and hashes pinned in splice.lock; installs repeat byte for byte."],
+];
 
 /** Capability groups: broker capability prefixes and the provider domains that serve them. */
 const CAPABILITY_GROUPS: Array<{ title: string; prefixes: string[]; domains: ProviderView["domain"][]; text: string; list?: string[] }> = [
@@ -487,6 +518,7 @@ ${header(loc, "home", config)}
       <div class="hero-shade"></div>
     </div>
     <div class="shell hero-inner">
+      <a class="news-pill" href="${link(WHATS_NEW.path)}"><span class="mono">${e(WHATS_NEW.label)}</span>${e(WHATS_NEW.text)} ${ARROW}</a>
       <p class="hero-eyebrow mono">Splice <span aria-hidden="true">/</span> Composable agent infrastructure</p>
       <h1 id="hero-title">The composable layer <br>for autonomous agents.</h1>
       <p class="hero-lead">Splice gives agents access to real capabilities through a secure, composable package ecosystem — so developers can discover, install, and run the tools and data their agents need.</p>
@@ -521,6 +553,17 @@ ${header(loc, "home", config)}
     </div>
   </section>
 
+  <section class="section section-rule" id="watch" aria-labelledby="watch-title">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Watch</p><h2 id="watch-title">See it work in 90 seconds.</h2></div>
+        <p class="section-lead">Install, live data with no key, verified skills, MCP and the SDK — recorded from the real CLI. Each feature has its own walkthrough in the docs.</p>
+      </div>
+      <div class="watch reveal">${videoFigure(config, loc, "how-it-works")}</div>
+      <p class="more">${[["markets", "Tokens & research"], ["stock-tokens", "Stock tokens"], ["markets", "Perps, DeFi & macro"], ["ask", "Ask"]].map(([slug, label]) => `<a class="text-link" href="${docs(slug!)}">${e(label!)} ${ARROW}</a>`).join("")}</p>
+    </div>
+  </section>
+
   <section class="section section-rule" id="platform" aria-labelledby="platform-title">
     <div class="shell statement">
       <p class="kicker">What is Splice</p>
@@ -532,6 +575,19 @@ ${header(loc, "home", config)}
           <div><dt>Capabilities</dt><dd>What a skill is allowed to use — files, hosts, data — declared up front and granted explicitly.</dd></div>
           <div><dt>Splice</dt><dd>The CLI and runtime that installs, verifies and runs skills for agents, through the CLI, SDK or MCP.</dd></div>
         </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-panel" id="why" aria-labelledby="why-title">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Why Splice</p><h2 id="why-title">The difference is in the details.</h2></div>
+        <p class="section-lead">What changes when an agent reaches tools and data through Splice instead of wiring each provider by hand.</p>
+      </div>
+      <div class="why-table reveal" role="table" aria-label="Without Splice and with Splice">
+        <div class="why-row why-head" role="row"><span role="columnheader"></span><span role="columnheader">Wiring providers yourself</span><span role="columnheader">With Splice</span></div>
+        ${WHY_ROWS.map(([k, without, withS]) => `<div class="why-row" role="row"><span class="why-k mono" role="rowheader">${e(k)}</span><span class="why-no" role="cell">${e(without)}</span><span class="why-yes" role="cell">${e(withS)}</span></div>`).join("\n        ")}
       </div>
     </div>
   </section>
@@ -677,6 +733,15 @@ export interface DocPageOptions {
   headings: Array<{ level: number; text: string; id: string }>;
   section: "docs" | "skills";
   aside?: string;
+  /** Demo videos shown after the page's first paragraph. */
+  videos?: string[];
+}
+
+/** Inserts HTML after the first paragraph of rendered Markdown (or at the top). */
+function afterFirstParagraph(html: string, insert: string): string {
+  if (!insert) return html;
+  const at = html.indexOf("</p>");
+  return at < 0 ? insert + html : html.slice(0, at + 4) + insert + html.slice(at + 4);
 }
 
 /** Where a docs-host page lives: docs at the root (introduction is the home page), skills under skills/. */
@@ -720,7 +785,7 @@ ${header(loc, options.section === "skills" ? "skills" : "docs", config)}
       <nav class="breadcrumbs mono" aria-label="Breadcrumb"><a href="${link("docs/introduction")}">Docs</a>${current ? `<span aria-hidden="true">/</span><span>${e(current.group)}</span>` : ""}<span aria-hidden="true">/</span><span aria-current="page">${e(options.title)}</span></nav>
     </div>
     ${options.aside ?? ""}
-    <article class="prose">${options.html}</article>
+    <article class="prose">${afterFirstParagraph(options.html, (options.videos ?? []).map((v) => videoFigure(config, loc, v)).join(""))}</article>
     <nav class="pager" aria-label="Previous and next page">
       ${prev ? `<a class="pager-prev" href="${hrefOf(prev.slug)}"><span class="mono">Previous</span><strong>${e(prev.title)}</strong></a>` : "<span></span>"}
       ${next ? `<a class="pager-next" href="${hrefOf(next.slug)}"><span class="mono">Next</span><strong>${e(next.title)}</strong></a>` : "<span></span>"}
@@ -752,4 +817,142 @@ ${footer(loc, config)}
 </body>
 </html>
 `;
+}
+
+// ------------------------------------------------------------------------------------------ site pages
+
+/** A plain site-host page (blog, registry, brand) with the shared header and footer. */
+function sitePage(config: SiteConfig, loc: PageLoc, page: { title: string; description: string; path: string; bodyClass?: string; jsonLd?: unknown }, main: string): string {
+  const self = page.path.split("/").pop() || "./";
+  return `${head(config, loc, { title: page.title, description: page.description, path: page.path, ...(page.jsonLd ? { jsonLd: page.jsonLd } : {}) })}
+<body class="plain ${page.bodyClass ?? ""}">
+<a class="skip-link" href="${e(self)}" data-section="main" data-local>Skip to content</a>
+${header(loc, "home", config)}
+<main id="main">
+${main}
+</main>
+${footer(loc, config)}
+</body>
+</html>
+`;
+}
+
+export interface BlogPost {
+  slug: string;
+  title: string;
+  description: string;
+  date: string;
+  html: string;
+}
+
+/** Blog post: Markdown rendered by the build; "@video name" paragraphs become demo videos. */
+export function renderBlogPost(config: SiteConfig, post: BlogPost): string {
+  const loc: PageLoc = { host: "site", dir: "blog" };
+  const html = post.html.replace(/<p>@video ([\w-]+)<\/p>/g, (_, name: string) => videoFigure(config, loc, name));
+  const jsonLd = { "@context": "https://schema.org", "@type": "BlogPosting", headline: post.title, description: post.description, datePublished: post.date, author: { "@type": "Organization", name: "Splice" }, publisher: { "@type": "Organization", name: "Splice", url: config.siteUrl } };
+  return sitePage(config, loc, { title: `${post.title} — Splice`, description: post.description, path: `blog/${post.slug}`, bodyClass: "blog", jsonLd }, `
+  <article class="section article">
+    <div class="shell narrow">
+      <p class="kicker"><a href="${href(config, loc, "blog")}">Blog</a> · <time datetime="${e(post.date)}">${e(new Date(post.date + "T00:00:00Z").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }))}</time></p>
+      <h1 class="display">${e(post.title)}</h1>
+      <p class="lead">${e(post.description)}</p>
+      <div class="prose">${html}</div>
+    </div>
+  </article>`);
+}
+
+export function renderBlogIndex(config: SiteConfig, posts: BlogPost[]): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "Blog — Splice", description: "Releases and notes from the Splice team.", path: "blog", bodyClass: "blog" }, `
+  <section class="section">
+    <div class="shell narrow">
+      <p class="kicker">Blog</p>
+      <h1 class="display">News and releases.</h1>
+      <ul class="post-list">
+        ${posts.map((p) => `<li><a href="${href(config, loc, `blog/${p.slug}`)}"><time class="mono" datetime="${e(p.date)}">${e(p.date)}</time><strong>${e(p.title)}</strong><span>${e(p.description)}</span></a></li>`).join("\n        ")}
+      </ul>
+    </div>
+  </section>`);
+}
+
+/** The skills registry, from the registry snapshot taken at build time (refreshed live in the page). */
+export function renderRegistry(config: SiteConfig, snapshot: RegistrySnapshot, skillPages: string[]): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  const link = (p: string) => href(config, loc, p);
+  const cards = snapshot.skills.map((s) => {
+    const install = `splice add ${s.id}${s.permissionSummary[0]?.startsWith("none") ? "" : " --accept-permissions"}`;
+    const text = [s.id, s.description, ...s.tools.map((t) => t.name)].join(" ").toLowerCase();
+    return `<div class="registry-item" data-filter-text="${e(text)}">${skillCard(s, link, skillPages.includes(s.name))}<div class="install-row"><code>${e(install)}</code><button type="button" class="copy-inline" data-copy="${e(install)}">Copy</button></div></div>`;
+  });
+  return sitePage(config, loc, { title: "Skills registry — Splice", description: "Every official Splice skill: versions, tools, permissions and verification results from the public registry.", path: "registry", bodyClass: "registry-page" }, `
+  <section class="section">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Registry</p><h1 class="display">Skills, verified.</h1></div>
+        <p class="section-lead">Every official skill in the public registry at <code>${e(new URL(snapshot.registry).host)}</code>: version, tools, the permissions it asks for and the result of <code>splice verify</code>. <span class="data-status" data-registry-status>Snapshot from ${e(snapshot.generatedAt.slice(0, 10))}.</span></p>
+      </div>
+      <label class="registry-search"><span class="mono">Search</span><input type="search" placeholder="tokens, github, files…" data-registry-filter autocomplete="off" spellcheck="false"></label>
+      <div class="skill-grid registry-grid">
+        ${cards.join("\n        ")}
+      </div>
+      <p class="empty-note" data-registry-empty hidden>No skill matches that search.</p>
+      <p class="more"><a class="text-link" href="${link("docs/skills")}">Official skills ${ARROW}</a><a class="text-link" href="${link("docs/authoring-skills")}">Write and publish your own ${ARROW}</a><a class="text-link" href="${link("docs/api")}">Registry API ${ARROW}</a></p>
+    </div>
+  </section>
+<script type="application/json" id="registry-snapshot">${JSON.stringify({ registry: snapshot.registry, generatedAt: snapshot.generatedAt, skills: snapshot.skills.map((s) => ({ id: s.id, version: s.version, integrity: s.integrity, size: s.size })) }).replace(/</g, "\\u003c")}</script>`);
+}
+
+/** Brand kit: logo files, colours, typography and naming. */
+export function renderBrand(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  const a = (p: string) => href(config, loc, p);
+  const colors: Array<[string, string, string]> = [["Ink", "#050505", "Backgrounds"], ["Surface", "#0B0C0D", "Panels, cards"], ["Bone", "#EDEBE7", "Text, the mark"], ["Steel", "#A8C1D9", "Accent, the woven thread"], ["Deep steel", "#6F93B6", "Secondary accent"], ["Grey", "#A4A8AD", "Secondary text"]];
+  const files: Array<[string, string, string]> = [
+    ["assets/brand/splice-mark.svg", "Mark — light, for dark backgrounds", "SVG"],
+    ["assets/brand/splice-mark-dark.svg", "Mark — dark, for light backgrounds", "SVG"],
+    ["assets/brand/splice-avatar.png", "Avatar, 1000 × 1000", "PNG"],
+    ["assets/brand/splice-banner.png", "Banner, 1600 × 560", "PNG"],
+    ["assets/brand/splice-social.png", "Social card, 1280 × 640", "PNG"],
+  ];
+  return sitePage(config, loc, { title: "Brand — Splice", description: "The Splice logo, colours, typography and how to write the name.", path: "brand", bodyClass: "brand-page" }, `
+  <section class="section">
+    <div class="shell">
+      <p class="kicker">Brand</p>
+      <h1 class="display">The Splice brand.</h1>
+      <p class="lead">Logo files, colours and type for articles, videos and integrations. Use them as provided — please do not redraw, recolour or stretch the mark.</p>
+
+      <div class="brand-hero reveal">
+        <div class="brand-tile dark"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#brand-mark"/></svg><span>Splice</span></div>
+        <div class="brand-tile light"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#brand-mark-dark"/></svg><span>Splice</span></div>
+      </div>
+
+      <h2 class="subhead mono">Downloads</h2>
+      <ul class="brand-files">
+        ${files.map(([p, label, kind]) => `<li><a href="${a(p)}" download><span>${e(label)}</span><span class="mono">${e(kind)} ↓</span></a></li>`).join("\n        ")}
+      </ul>
+
+      <h2 class="subhead mono">Colours</h2>
+      <div class="swatches">
+        ${colors.map(([name, hex, use]) => `<div class="swatch"><svg class="swatch-chip" viewBox="0 0 10 10" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="10" fill="${hex}"/></svg><strong>${e(name)}</strong><code>${hex}</code><span>${e(use)}</span></div>`).join("\n        ")}
+      </div>
+
+      <h2 class="subhead mono">Typography</h2>
+      <div class="type-specimen">
+        <div><p class="spec-sans">Geist</p><span>Headlines and text · SIL Open Font License</span></div>
+        <div><p class="spec-mono">Geist Mono</p><span>Commands, code and labels · SIL Open Font License</span></div>
+      </div>
+
+      <h2 class="subhead mono">Naming</h2>
+      <dl class="terms naming">
+        <div><dt>Splice</dt><dd>The product and the brand. Always one word, capital S.</dd></div>
+        <div><dt>splice</dt><dd>The command: <code>splice add</code>, <code>splice ask</code>.</dd></div>
+        <div><dt>spliceloom</dt><dd>Only in addresses: spliceloom.com, the <code>@spliceloom</code> npm scope, and the GitHub and X accounts. Not a product name.</dd></div>
+        <div><dt>Avoid</dt><dd>“SpliceLoom”, “Splice Loom”, “SPLICE” in running text.</dd></div>
+      </dl>
+    </div>
+  </section>
+<svg class="svg-defs" width="0" height="0" aria-hidden="true">
+  <symbol id="brand-mark" viewBox="0 0 32 32"><path d="M6 11H8.5M13.5 11H26M6 21H18.5M23.5 21H26" stroke="#EDEBE7" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M11 6V18.5M11 23.5V26M21 6V8.5" stroke="#EDEBE7" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M21 13.5V26" stroke="#A8C1D9" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="brand-mark-dark" viewBox="0 0 32 32"><path d="M6 11H8.5M13.5 11H26M6 21H18.5M23.5 21H26" stroke="#0B0C0D" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M11 6V18.5M11 23.5V26M21 6V8.5" stroke="#0B0C0D" stroke-opacity=".5" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M21 13.5V26" stroke="#6F93B6" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
+</svg>`);
 }

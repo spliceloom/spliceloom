@@ -17,7 +17,7 @@ import { COMMAND_OPTIONS, GLOBAL_OPTIONS } from "../../../packages/cli/dist/cli.
 import { packDirectory } from "../../../packages/core/dist/index.js";
 import { openLocalRegistry, serveRegistry, type RunningServer } from "../../registry/dist/node.js";
 import type { RegistryService } from "../../registry/dist/index.js";
-import { buildSite, PRIVATE_DOCS, PUBLISHED_DOCS, SKILL_PAGES, type BuildResult } from "../build.ts";
+import { buildSite, DOC_SOURCES, PRIVATE_DOCS, PUBLISHED_DOCS, SKILL_PAGES, type BuildResult } from "../build.ts";
 import { renderInline, renderMarkdown, slugify } from "../src/markdown.ts";
 import { OFFICIAL_SKILLS } from "../src/registry.ts";
 // @ts-expect-error — plain ESM script without type declarations
@@ -133,7 +133,7 @@ describe("documentation", () => {
   });
 
   it("the site publishes user documentation, never operator/admin documentation", () => {
-    for (const slug of PUBLISHED_DOCS) assert.ok(existsSync(join(REPO, "docs", `${slug}.md`)), slug);
+    for (const slug of PUBLISHED_DOCS) assert.ok(existsSync(join(REPO, DOC_SOURCES[slug] ?? join("docs", `${slug}.md`))), slug);
     for (const slug of PRIVATE_DOCS) assert.ok(!PUBLISHED_DOCS.includes(slug), slug);
     for (const required of ["getting-started", "cli", "sdk", "mcp", "skills", "authoring-skills", "permissions", "security", "architecture", "publishing", "faq", "api", "releasing"]) {
       assert.ok(PUBLISHED_DOCS.includes(required), required);
@@ -179,6 +179,24 @@ describe("website build against a registry", () => {
     for (const slug of PUBLISHED_DOCS) assert.ok(result.docsFiles.includes(docFile(slug)), slug);
     for (const name of SKILL_PAGES) assert.ok(result.docsFiles.includes(`skills/${name}.html`), name);
     assert.ok(!result.files.some((f) => f.startsWith("docs/") || f.startsWith("skills/")), "no docs pages on the site host");
+    // Site pages: skills registry, brand kit, blog; demo videos on both hosts; changelog in the docs.
+    for (const file of ["registry.html", "brand.html", "blog.html", "blog/introducing-splice.html", "assets/video/how-it-works.mp4", "assets/video/how-it-works.jpg", "assets/brand/splice-mark.svg", "assets/brand/splice-avatar.png"]) assert.ok(result.files.includes(file), file);
+    for (const file of ["changelog.html", "assets/video/tokens.mp4"]) assert.ok(result.docsFiles.includes(file), `docs: ${file}`);
+    const home = read("index.html");
+    assert.match(home, /class="news-pill" href="https:\/\/docs\.example\.test\/changelog"/);
+    assert.match(home, /<section class="section section-rule" id="watch"[\s\S]*?<video controls playsinline preload="none"/);
+    assert.match(home, /id="why"[\s\S]*?With Splice/);
+    assert.doesNotMatch(home, /<video[^>]*autoplay(?![^>]*hero-video)[^>]*controls/, "demo videos never autoplay");
+    assert.match(readDocs("quickstart.html"), /assets\/video\/how-it-works\.mp4/);
+    assert.match(readDocs("markets.html"), /assets\/video\/tokens\.mp4[\s\S]*assets\/video\/research\.mp4/);
+    const post = read("blog/introducing-splice.html");
+    assert.match(post, /<h1 class="display">Introducing Splice<\/h1>/);
+    assert.match(post, /href="https:\/\/docs\.example\.test\/quickstart"/, "blog links reach the docs host");
+    assert.doesNotMatch(post, /@video/);
+    assert.match(read("registry.html"), /data-copy="splice add @splice\/github --accept-permissions"/);
+    assert.match(read("registry.html"), /data-copy="splice add @splice\/json"/, "no --accept-permissions when nothing is requested");
+    assert.match(read("brand.html"), /#A8C1D9/);
+    assert.match(read("sitemap.xml"), /<loc>https:\/\/example\.test\/blog\/introducing-splice<\/loc>/);
     assert.match(read("_redirects"), /^\/docs\/:slug https:\/\/docs\.example\.test\/:slug 301$/m);
     assert.match(read("_redirects"), /^\/skills\/:name https:\/\/docs\.example\.test\/skills\/:name 301$/m);
     const index = read("index.html");

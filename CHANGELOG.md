@@ -6,7 +6,7 @@ are versioned independently in the registry; their versions are listed per relea
 ## 0.2.1 — 2026-10-03
 
 - Fix (Windows): tools could report `PATH_OUTSIDE_SANDBOX` for paths inside their sandbox when the
-  project directory was reached through an 8.3 short name (`C:\Users\RUNNER~1\…`), a junction or a
+  project directory was reached through a Windows 8.3 short name (such as `RUNNER~1`), a junction or a
   symlink. The runtime now resolves the project root to its canonical path before granting
   permissions.
 - The TypeScript SDK is published as [`@spliceloom/sdk`](https://www.npmjs.com/package/@spliceloom/sdk) 0.1.0.
