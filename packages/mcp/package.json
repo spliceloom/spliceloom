@@ -32,6 +32,10 @@
     "./http": {
       "types": "./dist/http.d.ts",
       "default": "./dist/http.js"
+    },
+    "./data-tools": {
+      "types": "./dist/data-tools.d.ts",
+      "default": "./dist/data-tools.js"
     }
   },
   "files": [

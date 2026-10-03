@@ -22,6 +22,7 @@
     "packages/data",
     "packages/sdk",
     "packages/mcp",
+    "packages/adapters",
     "packages/cli",
     "apps/registry",
     "apps/api"

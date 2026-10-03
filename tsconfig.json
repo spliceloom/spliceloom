@@ -26,6 +26,9 @@
       "path": "apps/api"
     },
     {
+      "path": "packages/adapters"
+    },
+    {
       "path": "packages/cli"
     }
   ]

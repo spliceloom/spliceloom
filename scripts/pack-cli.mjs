@@ -5,13 +5,14 @@
  *
  *   cli  @spliceloom/cli — the `splice` command
  *   sdk  @spliceloom/sdk — the TypeScript SDK
+ *   adapters  @spliceloom/adapters — Splice tools for agent frameworks
  *
  * Each package is self-contained: the workspace packages it needs are copied into its node_modules
  * and declared as bundleDependencies, so installing it needs nothing else from the npm registry.
  * Only compiled runtime files are included — no tests, source maps, sources, configuration or local
  * state.
  *
- *   npm run build && node scripts/pack-cli.mjs [--target cli|sdk]   # stage, check contents, pack
+ *   npm run build && node scripts/pack-cli.mjs [--target cli|sdk|adapters]   # stage, check contents, pack
  *   node scripts/pack-cli.mjs --target sdk --dry-run [--list]         # stage + `npm pack --dry-run` + check
  *
  * It never publishes. Publishing is a separate, manual step (docs/releasing.md).
@@ -38,6 +39,14 @@ export const TARGETS = {
     description: "Splice SDK — search, verify, install and run sandboxed skills, and read live Robinhood Chain and market data with provenance, from TypeScript.",
     keywords: ["splice", "sdk", "agents", "ai-agents", "skills", "sandbox", "robinhood-chain", "onchain", "typescript"],
     homepage: "https://docs.spliceloom.com/sdk",
+    bin: false,
+    required: ["dist/index.js", "dist/index.d.ts", "node_modules/@spliceloom/runtime/dist/host.mjs"],
+  },
+  adapters: {
+    internal: ["spec", "runtime", "core", "data", "sdk", "mcp"],
+    description: "Splice tools for agent frameworks — OpenAI, the OpenAI Agents SDK, LangChain and the Vercel AI SDK: live Robinhood Chain data and verified, sandboxed skills.",
+    keywords: ["splice", "agents", "ai-agents", "openai", "langchain", "ai-sdk", "tools", "function-calling", "robinhood-chain", "onchain"],
+    homepage: "https://docs.spliceloom.com/adapters",
     bin: false,
     required: ["dist/index.js", "dist/index.d.ts", "node_modules/@spliceloom/runtime/dist/host.mjs"],
   },
