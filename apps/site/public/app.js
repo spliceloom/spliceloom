@@ -664,121 +664,252 @@
     volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     return { chart, candles, volume };
   };
+  const compact = (v) => {
+    const n = num(v);
+    if (!Number.isFinite(n)) return "—";
+    if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+    if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+    if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+    return n.toFixed(n < 10 ? 2 : 0);
+  };
+  const agoShort = (iso) => {
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return "now";
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
+  };
   const token = async () => {
-    const sources = root.querySelector("[data-sources]");
     let d;
     try {
       d = await getJson("/v1/token");
     } catch {
-      sources.replaceChildren(el("li", "Live data is unavailable right now. Try again in a minute.", "muted"));
-      root.querySelector("[data-price-note]").textContent = "Live data unavailable";
+      root.querySelector("[data-sources]").replaceChildren(el("li", "Live data is unavailable right now. Try again in a minute.", "muted"));
+      root.querySelector("[data-live-dot]").textContent = "unavailable";
       return;
     }
     const m = d.market || {};
     const st = m.stats || {};
-    const set = (key, text, note) => {
+    const supply = num(d.totalSupply) || 1e9;
+    const codexNote = `codex · ${ago(m.updatedAt)}`;
+    const kv = (key, text) => {
+      const n = root.querySelector(`[data-kv="${key}"] [data-value]`);
+      if (n) n.textContent = text;
+    };
+    const side = (key, text, note) => {
       const card = root.querySelector(`[data-stat="${key}"]`);
       if (!card) return;
       card.querySelector("[data-value]").textContent = text;
       card.querySelector("[data-note]").textContent = note || "";
     };
-    const priceEl = root.querySelector("[data-price]");
-    const showPrice = (p, note) => {
+    const mcEl = root.querySelector("[data-mc]");
+    let lastPrice = d.priceUsd ?? num(st.priceUsd);
+    const showPrice = (p) => {
       if (!Number.isFinite(num(p))) return;
-      const prev = num(priceEl.dataset.v);
-      priceEl.textContent = usd(p);
-      priceEl.dataset.v = String(p);
-      if (Number.isFinite(prev) && prev !== num(p)) {
-        priceEl.classList.remove("tick-up", "tick-down");
-        void priceEl.offsetWidth;
-        priceEl.classList.add(num(p) > prev ? "tick-up" : "tick-down");
+      const prev = lastPrice;
+      lastPrice = num(p);
+      mcEl.textContent = usd(lastPrice * supply);
+      kv("price", usd(lastPrice));
+      side("fdvUsd", usd(lastPrice * supply), "price × total supply");
+      if (Number.isFinite(prev) && prev !== lastPrice) {
+        mcEl.classList.remove("tick-up", "tick-down");
+        void mcEl.offsetWidth;
+        mcEl.classList.add(lastPrice > prev ? "tick-up" : "tick-down");
       }
-      if (note) root.querySelector("[data-price-note]").textContent = note;
     };
-    showPrice(d.priceUsd ?? num(st.priceUsd), d.priceUsd !== null ? `live from the pool · ${sourceText(d.sources.pool)}` : `codex · ${ago(m.updatedAt)}`);
-    const change = root.querySelector("[data-change]");
-    const ch = st.changePct ? st.changePct.h24 : null;
-    change.textContent = `24h ${pct(ch)}`;
-    tone(change, ch);
+    showPrice(lastPrice);
+    kv("liq", usd(d.pool ? d.pool.liquidityUsd : st.liquidityUsd));
+    kv("vol", usd(st.volumeUsd ? st.volumeUsd.h24 : null));
+    kv("holders", amount(d.holders ?? st.holders));
+    side("liquidityUsd", usd(d.pool ? d.pool.liquidityUsd : st.liquidityUsd), d.pool ? "pool reserves × Chainlink ETH/USD" : codexNote);
+    side("txns24", amount(st.txns24), codexNote);
+    side("uniqueBuyers24", amount(st.uniqueBuyers24), st.uniqueSellers24 !== null && st.uniqueSellers24 !== undefined ? `${amount(st.uniqueSellers24)} unique sellers` : codexNote);
+    side("burned", d.burned && d.burned.pctOfSupply !== null ? `${num(d.burned.pctOfSupply).toFixed(2)}%` : "—", d.burned && d.burned.total !== null ? `${compact(d.burned.total)} SPLICE` : "");
+    side("totalSupply", compact(d.totalSupply), sourceText(d.sources.totalSupply));
 
-    const codexNote = `codex · ${ago(m.updatedAt)}`;
-    set("fdvUsd", usd(d.fdvUsd ?? st.marketCapUsd), d.fdvUsd !== null ? "price × total supply" : codexNote);
-    set("liquidityUsd", usd(d.pool ? d.pool.liquidityUsd : st.liquidityUsd), d.pool ? "pool reserves × Chainlink ETH/USD" : codexNote);
-    set("volume24hUsd", usd(st.volumeUsd ? st.volumeUsd.h24 : null), codexNote);
-    set("holders", amount(d.holders ?? st.holders), sourceText(d.sources.holders));
-    set("txns24", amount(st.txns24), codexNote);
-    set("uniqueBuyers24", amount(st.uniqueBuyers24), st.uniqueSellers24 !== undefined && st.uniqueSellers24 !== null ? `${amount(st.uniqueSellers24)} unique sellers` : codexNote);
-    set("burned", d.burned && d.burned.pctOfSupply !== null ? `${num(d.burned.pctOfSupply).toFixed(2)}%` : "—", d.burned && d.burned.total !== null ? `${amount(d.burned.total)} SPLICE` : "");
-    set("totalSupply", amount(d.totalSupply), sourceText(d.sources.totalSupply));
-
-    // ---- candlestick chart: Codex 5-minute history + live pool price for the current candle
-    const base = (m.chart || []).filter((k) => Array.isArray(k) && k.length >= 6).map((k) => ({ time: k[0], open: k[1], high: k[2], low: k[3], close: k[4], value: k[5] }));
+    // ---- candles: Codex 1-minute (≤ 8 h) and 1-hour history, live pool price for the current candle
+    const toK = (k) => ({ time: k[0], open: k[1], high: k[2], low: k[3], close: k[4], value: k[5] });
+    const base1m = (m.chart || []).filter((k) => Array.isArray(k) && k.length >= 6).map(toK);
+    const base1h = (m.chartHourly || []).filter((k) => Array.isArray(k) && k.length >= 6).map(toK);
     const host = root.querySelector("[data-tv-chart]");
     const empty = root.querySelector("[data-chart-empty]");
     const ohlc = root.querySelector("[data-chart-ohlc]");
     const tv = createTokenChart(host);
     let tf = 300;
-    const render = () => {
-      if (!tv) return;
-      const agg = aggregate(base, tf);
-      tv.candles.setData(agg.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
-      tv.volume.setData(agg.map((k) => ({ time: k.time, value: k.value, color: k.close >= k.open ? "rgba(143,207,174,0.35)" : "rgba(228,141,141,0.35)" })));
+    let mode = "mc";
+    const scale = () => (mode === "mc" ? supply : 1);
+    const fmt = (v) => (mode === "mc" ? usd(v) : usd(v));
+    const series = () => {
+      const src = tf >= 3600 ? base1h : base1m;
+      const s = scale();
+      return aggregate(src, tf).map((k) => ({ ...k, open: k.open * s, high: k.high * s, low: k.low * s, close: k.close * s }));
     };
-    if (tv && base.length) {
-      empty.hidden = true;
-      render();
-      tv.chart.timeScale().fitContent();
+    const volColor = (k) => (k.close >= k.open ? "rgba(143,207,174,0.35)" : "rgba(228,141,141,0.35)");
+    const render = (fit) => {
+      if (!tv) return;
+      const agg = series();
+      if (mode === "mc") tv.candles.applyOptions({ priceFormat: { type: "custom", formatter: (p) => usd(p), minMove: 0.01 } });
+      else tv.candles.applyOptions({ priceFormat: { type: "custom", formatter: (p) => (p > 0 && p < 0.0001 ? `$${p.toFixed(Math.ceil(-Math.log10(p)) + 3)}` : usd(p)), minMove: 1e-12 } });
+      tv.candles.setData(agg.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+      tv.volume.setData(agg.map((k) => ({ time: k.time, value: k.value, color: volColor(k) })));
+      empty.hidden = agg.length > 0;
+      if (!agg.length) empty.textContent = "No candles for this interval yet.";
+      if (fit) {
+        const n = agg.length;
+        if (n > 90) tv.chart.timeScale().setVisibleLogicalRange({ from: n - 90, to: n + 3 });
+        else tv.chart.timeScale().fitContent();
+      }
+    };
+    if (tv && (base1m.length || base1h.length)) {
+      render(true);
       tv.chart.subscribeCrosshairMove((param) => {
         const bar = param && param.seriesData ? param.seriesData.get(tv.candles) : null;
-        ohlc.textContent = bar ? `O ${usd(bar.open)}  H ${usd(bar.high)}  L ${usd(bar.low)}  C ${usd(bar.close)}` : "";
+        ohlc.textContent = bar ? `O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}` : "";
       });
-    } else empty.textContent = !tv ? "Chart library failed to load." : d.sources.chart && d.sources.chart.status !== "LIVE" ? `Chart unavailable: ${d.sources.chart.reason || d.sources.chart.status}` : "Not enough trading history yet.";
+    } else empty.textContent = !tv ? "Chart library failed to load." : "Not enough trading history yet.";
     for (const button of root.querySelectorAll("[data-tf]")) {
       button.addEventListener("click", () => {
         tf = Number(button.getAttribute("data-tf"));
         for (const b of root.querySelectorAll("[data-tf]")) b.setAttribute("aria-pressed", String(b === button));
-        render();
-        if (tv) tv.chart.timeScale().fitContent();
+        render(true);
+      });
+    }
+    for (const button of root.querySelectorAll("[data-mode]")) {
+      button.addEventListener("click", () => {
+        mode = button.getAttribute("data-mode");
+        for (const b of root.querySelectorAll("[data-mode]")) b.setAttribute("aria-pressed", String(b === button));
+        render(false);
       });
     }
     const chartSource = root.querySelector("[data-chart-source]");
-    chartSource.textContent = `history: codex 5-minute candles · updated ${ago(m.updatedAt)}`;
-    /** Applies one live price (unix seconds) to the current 5-minute candle. */
-    const tick = (time, price, addVolume = 0) => {
-      if (!Number.isFinite(price) || !Number.isFinite(time)) return;
-      const bucket = Math.floor(time / 300) * 300;
-      const last = base[base.length - 1];
+    chartSource.textContent = `history: codex candles (1m ${ago(m.updatedAt)}, 1h ${ago(m.hourlyUpdatedAt)})`;
+    const bump = (arr, size, time, price, vol) => {
+      const bucket = Math.floor(time / size) * size;
+      const last = arr[arr.length - 1];
       if (last && bucket < last.time) return;
       if (last && last.time === bucket) {
         last.high = Math.max(last.high, price);
         last.low = Math.min(last.low, price);
         last.close = price;
-        last.value += addVolume;
-      } else base.push({ time: bucket, open: last ? last.close : price, high: Math.max(price, last ? last.close : price), low: Math.min(price, last ? last.close : price), close: price, value: addVolume });
-      if (!tv) return;
-      if (empty.hidden === false && base.length) {
-        empty.hidden = true;
-        render();
-        return;
+        last.value += vol;
+      } else {
+        const open = last ? last.close : price;
+        arr.push({ time: bucket, open, high: Math.max(open, price), low: Math.min(open, price), close: price, value: vol });
       }
-      const agg = aggregate(base.slice(-Math.ceil(tf / 300) - 1), tf);
+    };
+    const tick = (time, price, vol = 0) => {
+      if (!Number.isFinite(price) || !Number.isFinite(time)) return;
+      bump(base1m, 60, time, price, vol);
+      bump(base1h, 3600, time, price, vol);
+      if (!tv) return;
+      if (!empty.hidden) return render(true);
+      const src = tf >= 3600 ? base1h : base1m;
+      const unit = tf >= 3600 ? 3600 : 60;
+      const agg = aggregate(src.slice(-Math.ceil(tf / unit) - 1), tf);
       const k = agg[agg.length - 1];
-      tv.candles.update({ time: k.time, open: k.open, high: k.high, low: k.low, close: k.close });
-      tv.volume.update({ time: k.time, value: k.value, color: k.close >= k.open ? "rgba(143,207,174,0.35)" : "rgba(228,141,141,0.35)" });
+      const s = scale();
+      tv.candles.update({ time: k.time, open: k.open * s, high: k.high * s, low: k.low * s, close: k.close * s });
+      tv.volume.update({ time: k.time, value: k.value, color: volColor(k) });
     };
 
-    // ---- buy / sell pressure
-    const buys = num(st.buys24), sells = num(st.sells24);
-    if (Number.isFinite(buys) && Number.isFinite(sells) && buys + sells > 0) {
-      root.querySelector("[data-flow-buy]").setAttribute("width", String((buys / (buys + sells)) * 1000));
-      root.querySelector("[data-flow-buys]").textContent = `${amount(buys)} buys`;
-      root.querySelector("[data-flow-sells]").textContent = `${amount(sells)} sells`;
-      root.querySelector("[data-flow-note]").textContent = codexNote;
+    // ---- trades (Codex history + live on-chain swaps)
+    const trades = new Map();
+    for (const t of m.trades || []) if (t.txHash) trades.set(t.txHash, { type: t.type, valueUsd: num(t.valueUsd), priceUsd: num(t.priceUsd), splice: num(t.priceUsd) > 0 ? num(t.valueUsd) / num(t.priceUsd) : NaN, wallet: t.maker, txHash: t.txHash, time: t.time, fresh: false });
+    const body = root.querySelector("[data-trades]");
+    const drawTrades = () => {
+      const list = [...trades.values()].sort((a, b) => Date.parse(b.time || 0) - Date.parse(a.time || 0)).slice(0, 25);
+      body.replaceChildren(...list.map((t) => {
+        const buy = /buy/i.test(t.type);
+        const tr = row([{ text: agoShort(t.time), cls: "muted" }, { text: buy ? "Buy" : "Sell", cls: buy ? "up strong" : "down strong" }, { text: usd(t.priceUsd) }, { text: compact(t.splice) }, { text: usd(t.valueUsd), cls: buy ? "up" : "down" }, { text: short(t.wallet), title: t.wallet || "" }]);
+        if (t.fresh) {
+          tr.classList.add(buy ? "flash-up" : "flash-down");
+          t.fresh = false;
+        }
+        return tr;
+      }));
+      if (!list.length) body.replaceChildren(row([{ text: "No trades available right now.", cls: "muted" }]));
+    };
+    drawTrades();
+    root.querySelector("[data-trades-source]").textContent = `history: ${codexNote} · new trades: on-chain swap events`;
+
+    // ---- windows: 5m from candles and trades; 1h / 4h / 24h from Codex
+    let win = "h24";
+    const windowStats = () => {
+      const seconds = { m5: 300, h1: 3600, h4: 14400, h24: 86400 }[win];
+      const since = Date.now() / 1000 - seconds;
+      let change = null, vol = null, buys = null, sells = null;
+      if (win === "m5") {
+        const ref = [...base1m].reverse().find((k) => k.time <= since);
+        if (ref && Number.isFinite(lastPrice)) change = ((lastPrice - ref.close) / ref.close) * 100;
+        vol = base1m.filter((k) => k.time >= since).reduce((s, k) => s + (k.value || 0), 0);
+      } else {
+        change = st.changePct ? st.changePct[win] : null;
+        vol = st.volumeUsd ? num(st.volumeUsd[win]) : null;
+      }
+      if (win === "h24") {
+        buys = num(st.buys24);
+        sells = num(st.sells24);
+      } else {
+        // Counted from the trade list only when it reaches back to the start of the window.
+        const list = [...trades.values()];
+        const oldest = Math.min(...list.map((t) => Date.parse(t.time) / 1000).filter(Number.isFinite));
+        if (list.length && oldest <= since) {
+          const inWin = list.filter((t) => Date.parse(t.time) / 1000 >= since);
+          buys = inWin.filter((t) => /buy/i.test(t.type)).length;
+          sells = inWin.length - buys;
+        }
+      }
+      return { change, vol, buys, sells };
+    };
+    const drawWindows = () => {
+      if (Number.isFinite(lastPrice)) {
+        const ref = [...base1m].reverse().find((k) => k.time <= Date.now() / 1000 - 300);
+        const c5 = ref ? ((lastPrice - ref.close) / ref.close) * 100 : null;
+        const el5 = root.querySelector('[data-change="m5"]');
+        el5.textContent = pct(c5);
+        el5.className = "";
+        tone(el5, c5);
+      }
+      for (const w of ["h1", "h4", "h24"]) {
+        const n = root.querySelector(`[data-change="${w}"]`);
+        const v = st.changePct ? st.changePct[w] : null;
+        n.textContent = pct(v);
+        n.className = "";
+        tone(n, v);
+      }
+      const s = windowStats();
+      root.querySelector("[data-win-vol]").textContent = usd(s.vol);
+      root.querySelector("[data-win-buys]").textContent = Number.isFinite(s.buys) && s.buys !== null ? amount(s.buys) : "—";
+      root.querySelector("[data-win-sells]").textContent = Number.isFinite(s.sells) && s.sells !== null ? amount(s.sells) : "—";
+      const net = s.buys !== null && s.sells !== null && Number.isFinite(s.buys) ? s.buys - s.sells : null;
+      const netEl = root.querySelector("[data-win-net]");
+      netEl.textContent = net === null ? "—" : `${net > 0 ? "+" : ""}${amount(net)}`;
+      netEl.className = "";
+      tone(netEl, net);
+      const total = (s.buys || 0) + (s.sells || 0);
+      root.querySelector("[data-flow-buy]").setAttribute("width", String(total > 0 ? (s.buys / total) * 1000 : 0));
+      root.querySelector("[data-win-source]").textContent = win === "m5" ? "candles + trades · live" : win === "h24" ? codexNote : `change and volume: ${codexNote} · buys/sells: latest trades`;
+    };
+    for (const b of root.querySelectorAll("[data-win]")) {
+      b.addEventListener("click", () => {
+        win = b.getAttribute("data-win");
+        for (const x of root.querySelectorAll("[data-win]")) x.setAttribute("aria-selected", String(x === b));
+        drawWindows();
+      });
+    }
+    drawWindows();
+
+    // ---- tabs
+    for (const b of root.querySelectorAll("[data-tab]")) {
+      b.addEventListener("click", () => {
+        for (const x of root.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", String(x === b));
+        for (const p of root.querySelectorAll("[data-panel]")) p.hidden = p.getAttribute("data-panel") !== b.getAttribute("data-tab");
+      });
     }
 
     // ---- holders
     const holderList = root.querySelector("[data-holders]");
     const top = d.topHolders || [];
+    root.querySelector("[data-holders-count]").textContent = d.holders ? amount(d.holders) : "";
     holderList.replaceChildren(...top.map((h, i) => {
       const li = el("li");
       const head = el("div", undefined, "holder-row");
@@ -803,27 +934,6 @@
     if (!top.length) holderList.replaceChildren(el("li", "Holder list unavailable right now.", "muted"));
     root.querySelector("[data-holders-source]").textContent = sourceText(d.sources.holders);
 
-    // ---- trades: Codex history merged with live on-chain swaps
-    const trades = new Map();
-    for (const t of m.trades || []) if (t.txHash) trades.set(t.txHash, { type: t.type, valueUsd: num(t.valueUsd), splice: Number.isFinite(num(t.valueUsd)) && num(t.priceUsd) > 0 ? num(t.valueUsd) / num(t.priceUsd) : NaN, wallet: t.maker, txHash: t.txHash, time: t.time, fresh: false });
-    const body = root.querySelector("[data-trades]");
-    const drawTrades = () => {
-      const list = [...trades.values()].sort((a, b) => Date.parse(b.time || 0) - Date.parse(a.time || 0)).slice(0, 14);
-      body.replaceChildren(...list.map((t) => {
-        const buy = /buy/i.test(t.type);
-        const tr = row([{ text: buy ? "Buy" : "Sell", cls: buy ? "up strong" : "down strong" }, { text: usd(t.valueUsd) }, { text: amount(t.splice) }, { text: short(t.wallet), title: t.wallet || "" }, { text: t.time ? ago(t.time) : "just now" }]);
-        if (t.fresh) {
-          tr.classList.add(buy ? "flash-up" : "flash-down");
-          t.fresh = false;
-        }
-        return tr;
-      }));
-      if (!list.length) body.replaceChildren(row([{ text: "No trades available right now.", cls: "muted" }]));
-    };
-    drawTrades();
-    const tradesSource = root.querySelector("[data-trades-source]");
-    tradesSource.textContent = `history: ${codexNote} · new trades: on-chain swap events`;
-
     // ---- burns
     const b = d.burned || {};
     root.querySelector("[data-burn-total]").textContent = b.total !== null ? `${amount(b.total)} SPLICE` : "unavailable";
@@ -835,8 +945,8 @@
       return li;
     }));
 
-    const labels = { metadata: "Name, symbol, decimals", totalSupply: "Total supply", holders: "Holders and top holders", burned: "Burned balances", pool: "Pool reserves (live price, liquidity)", ethUsd: "ETH/USD (Chainlink)", stats: "24h activity", chart: "Candle history", trades: "Trade history" };
-    sources.replaceChildren(...Object.entries(d.sources).map(([k, s]) => {
+    const labels = { metadata: "Name, symbol, decimals", totalSupply: "Total supply", holders: "Holders and top holders", burned: "Burned balances", pool: "Pool reserves (live price, liquidity)", ethUsd: "ETH/USD (Chainlink)", stats: "24h activity", chart: "1-minute candles", chartHourly: "1-hour candles", trades: "Trade history" };
+    root.querySelector("[data-sources]").replaceChildren(...Object.entries(d.sources).map(([k, s]) => {
       const li = el("li");
       li.append(el("span", labels[k] || k), el("span", sourceText(s), `mono status-${(s.status || "").toLowerCase()}`));
       return li;
@@ -851,25 +961,28 @@
       try {
         const live = await getJson("/v1/token/live");
         if (live.status !== "LIVE") throw new Error(live.reason || "unavailable");
-        const ts = Date.parse(live.time) / 1000;
+        let changed = false;
         for (const s of [...(live.swaps || [])].reverse()) {
           const key = `${s.txHash}:${s.logIndex}`;
           if (seen.has(key)) continue;
           seen.add(key);
           const known = trades.has(s.txHash);
-          trades.set(s.txHash, { type: s.type, valueUsd: s.valueUsd, splice: s.splice, wallet: s.wallet, txHash: s.txHash, time: s.time, fresh: !known });
+          trades.set(s.txHash, { type: s.type, valueUsd: s.valueUsd, priceUsd: s.priceUsd, splice: s.splice, wallet: s.wallet, txHash: s.txHash, time: s.time, fresh: !known });
           if (!known && s.time) tick(Date.parse(s.time) / 1000, s.priceUsd, num(s.valueUsd) || 0);
+          changed = true;
         }
-        drawTrades();
-        tick(ts, live.priceUsd);
-        showPrice(live.priceUsd, `live · block ${amount(live.block)} · ${new Date(live.time).toLocaleTimeString("en-US", { hour12: false })}`);
-        if (Number.isFinite(num(live.liquidityUsd))) set("liquidityUsd", usd(live.liquidityUsd), "pool reserves × Chainlink ETH/USD · live");
-        if (Number.isFinite(num(live.priceUsd)) && d.totalSupply) set("fdvUsd", usd(num(live.priceUsd) * num(d.totalSupply)), "price × total supply · live");
-        dot.textContent = "LIVE";
+        if (changed) drawTrades();
+        tick(Date.parse(live.time) / 1000, live.priceUsd);
+        showPrice(live.priceUsd);
+        if (Number.isFinite(num(live.liquidityUsd))) {
+          kv("liq", usd(live.liquidityUsd));
+          side("liquidityUsd", usd(live.liquidityUsd), "pool reserves × Chainlink ETH/USD · live");
+        }
+        drawWindows();
+        dot.textContent = `LIVE · block ${amount(live.block)}`;
         dot.classList.add("on");
         tradesDot.textContent = "LIVE";
         tradesDot.classList.add("on");
-        chartSource.textContent = `history: codex 5-minute candles · updated ${ago(m.updatedAt)} · current candle: live pool price (block ${amount(live.block)})`;
       } catch {
         dot.textContent = "reconnecting…";
         dot.classList.remove("on");
@@ -877,6 +990,7 @@
     };
     poll();
     setInterval(poll, LIVE_MS);
+    setInterval(drawTrades, 15000);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) poll();
     });

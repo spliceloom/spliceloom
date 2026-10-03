@@ -103,26 +103,36 @@ export async function cachedJson<T>(ctx: CacheContext, key: string, freshMs: num
   return refresh();
 }
 
-/** Codex market data for the token: refreshed at most every 20 minutes (free plan: 10,000 requests/month). */
-export const CODEX_TTL_MS = 20 * 60_000;
+/** Codex market data for the token (free plan: 10,000 requests/month): stats, trades and 1-minute
+ * candles at most every 30 minutes (3 requests), 1-hour candles at most every hour (1 request). */
+export const CODEX_TTL_MS = 30 * 60_000;
+const CODEX_HOURLY_TTL_MS = 60 * 60_000;
+
+type Candle = readonly [number, number, number, number, number, number];
+function candlesOf(r: unknown): Candle[] {
+  const candles = live<{ candles: Array<{ time: string; open: string; high: string; low: string; close: string; volumeUsd?: string }> }>(r)?.candles ?? [];
+  // [unix seconds, open, high, low, close, volume USD]
+  return candles.map((c) => [Math.floor(Date.parse(c.time) / 1000), Number(c.open), Number(c.high), Number(c.low), Number(c.close), Number(c.volumeUsd ?? 0)] as const);
+}
 
 async function codexMarket(data: SpliceData) {
-  const [resolved, chart, trades] = await Promise.all([data.tokens.resolve(TOKEN_CA), data.tokens.chart(TOKEN_CA, { timeframe: "5m", limit: 500 }), data.tokens.trades(TOKEN_CA, { limit: 25 })]);
+  const [resolved, chart, trades] = await Promise.all([data.tokens.resolve(TOKEN_CA), data.tokens.chart(TOKEN_CA, { timeframe: "1m", limit: 500 }), data.tokens.trades(TOKEN_CA, { limit: 40 })]);
   const stats = "stats" in resolved ? resolved.stats : undefined;
-  const candles = live<{ candles: Array<{ time: string; open: string; high: string; low: string; close: string; volumeUsd?: string }> }>(chart)?.candles ?? [];
-  // 5-minute OHLCV candles: [unix seconds, open, high, low, close, volume USD].
-  const points = candles.map((c) => [Math.floor(Date.parse(c.time) / 1000), Number(c.open), Number(c.high), Number(c.low), Number(c.close), Number(c.volumeUsd ?? 0)] as const);
   const tradeRows = live<{ trades: Array<{ type: string; time: string; txHash?: string; maker?: string; priceUsd?: string; valueUsd?: string }> }>(trades)?.trades ?? [];
   return {
     stats: stats
       ? { priceUsd: stats.priceUsd ?? null, changePct: stats.changePct, volumeUsd: stats.volumeUsd, liquidityUsd: stats.liquidityUsd ?? null, marketCapUsd: stats.marketCapUsd ?? null, holders: stats.holders ?? null, txns24: stats.txns24 ?? null, buys24: stats.buys24 ?? null, sells24: stats.sells24 ?? null, uniqueBuyers24: stats.uniqueBuyers24 ?? null, uniqueSellers24: stats.uniqueSellers24 ?? null, createdAt: stats.createdAt ?? null }
       : null,
-    chart: points,
+    chart: candlesOf(chart),
     trades: tradeRows.map((t) => ({ type: t.type, time: t.time, txHash: t.txHash ?? null, maker: t.maker ?? null, priceUsd: t.priceUsd ?? null, valueUsd: t.valueUsd ?? null })),
     sources: { stats: "stats" in resolved ? { status: stats ? "LIVE" : "UNAVAILABLE", source: "codex", fetchedAt: new Date().toISOString() } : section(resolved as DataResult<unknown>), chart: section(chart), trades: section(trades) },
   };
 }
 
+async function codexHourly(data: SpliceData) {
+  const chart = await data.tokens.chart(TOKEN_CA, { timeframe: "1h", limit: 500 });
+  return { chart: candlesOf(chart), source: section(chart) };
+}
 /** pons-v2 pair events: Buy (ETH in, SPLICE out) and Sell (SPLICE in, ETH out); data words 0 and 1 are the amounts. */
 const BUY_TOPIC = "0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455";
 const SELL_TOPIC = "0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df";
@@ -200,12 +210,13 @@ export async function tokenLive(data: SpliceData, ctx: CacheContext = {}): Promi
 }
 
 export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Promise<Record<string, unknown>> {
-  const [token, reserves, poolBalance, eth, market, ...burns] = await Promise.all([
+  const [token, reserves, poolBalance, eth, market, hourly, ...burns] = await Promise.all([
     data.onchain.token(TOKEN_CA),
     data.onchain.call(TOKEN_POOL, GET_RESERVES),
     data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(TOKEN_POOL)),
     data.oracle.price("ETH"),
-    cachedJson(ctx, "codex:token:v3", CODEX_TTL_MS, () => codexMarket(data), (v) => v.stats !== null),
+    cachedJson(ctx, "codex:token:v4", CODEX_TTL_MS, () => codexMarket(data), (v) => v.stats !== null),
+    cachedJson(ctx, "codex:token:1h:v1", CODEX_HOURLY_TTL_MS, () => codexHourly(data), (v) => v.chart.length > 0),
     ...BURN_ADDRESSES.map((a) => data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(a))),
   ]);
   const sections = "sections" in token ? (token.sections as Record<string, DataResult<any>>) : {};
@@ -268,7 +279,7 @@ export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Pr
       addresses: burnRows.map((b) => ({ address: b.address, amount: b.raw !== undefined ? formatUnits(b.raw, decimals) : null, ...b.section })),
     },
     topHolders: (holders?.top ?? []).map((h) => ({ address: h.address, amount: formatUnits(BigInt(h.value), decimals), pctOfSupply: pct(BigInt(h.value)), label: labels[h.address.toLowerCase()] ?? null })),
-    market: { ...market.value, updatedAt: new Date(market.at).toISOString() },
+    market: { ...market.value, chartHourly: hourly.value.chart, updatedAt: new Date(market.at).toISOString(), hourlyUpdatedAt: new Date(hourly.at).toISOString() },
     sources: {
       metadata: section(sections.metadata),
       totalSupply: section(sections.totalSupply),
@@ -277,6 +288,7 @@ export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Pr
       pool: section(reserves),
       ethUsd: section(eth),
       ...market.value.sources,
+      chartHourly: hourly.value.source,
     },
   };
 }
@@ -339,7 +351,7 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       if (request.method === "GET" && url.pathname === "/v1/token") {
         const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
         // The whole summary is served from the global cache too, so no visitor waits for slow providers.
-        const summary = await cachedJson(ctx, "token:summary:v1", 60_000, () => tokenSummary(options.data(), ctx), (v) => v.priceUsd !== null);
+        const summary = await cachedJson(ctx, "token:summary:v2", 60_000, () => tokenSummary(options.data(), ctx), (v) => v.priceUsd !== null);
         return json(summary.value, 200, origin, { "cache-control": "public, max-age=30" });
       }
       if (request.method === "GET" && url.pathname === "/v1/token/live") {

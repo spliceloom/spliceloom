@@ -973,75 +973,110 @@ const stat = (key: string, label: string) => `<div class="stat-card" data-stat="
 /** The one inline <style> element Lightweight Charts 5.2.1 injects (allowed by hash, nothing else inline). */
 const LWC_STYLE_HASH = "sha256-3pRED1tOXas1FXFoPb9TGCjmYe9XQsmO9OV23khV2nY=";
 
-/** $SPLICE: live price from the pool, chart, trades, holders and burns, each with its source. */
+/** $SPLICE: a trading-terminal view — live price from the pool, candles, trades, holders and burns. */
 export function renderToken(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };
-  return sitePage(config, loc, { title: "$SPLICE token — Splice", description: "The official $SPLICE contract on Robinhood Chain: live price, chart, trades, holders and burns, each with its source.", path: "token", bodyClass: "live-page token-page", styleHashes: [LWC_STYLE_HASH] }, `
-  <section class="section" data-live="token" data-api="${e(config.api ?? "")}">
-    <div class="shell">
-      <div class="token-head">
-        <div>
-          <p class="kicker">Token · Robinhood Chain</p>
-          <h1 class="display token-title">$SPLICE</h1>
+  const kv = (key: string, label: string) => `<div class="kv" data-kv="${key}"><span>${e(label)}</span><strong data-value>—</strong></div>`;
+  const side = (key: string, label: string) => `<div class="side-stat" data-stat="${key}"><span>${e(label)}</span><strong data-value>—</strong><small data-note></small></div>`;
+  return sitePage(config, loc, { title: "$SPLICE token — Splice", description: "The official $SPLICE contract on Robinhood Chain: live price, candles, trades, holders and burns, each with its source.", path: "token", bodyClass: "live-page token-page", styleHashes: [LWC_STYLE_HASH] }, `
+  <section class="section token-terminal" data-live="token" data-api="${e(config.api ?? "")}">
+    <div class="shell wide">
+      <header class="term-head">
+        <div class="term-id">
+          <div class="term-mark" aria-hidden="true">${LOGO}</div>
+          <div>
+            <h1><span>$SPLICE</span> <small>Splice</small></h1>
+            <div class="term-ca"><code>${TOKEN_CA.slice(0, 6)}…${TOKEN_CA.slice(-4)}</code><button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy CA</button><span class="mono muted">Robinhood Chain</span><a class="mono" href="https://x.com/spliceloom" rel="noopener">X</a></div>
+          </div>
         </div>
-        <div class="token-price">
-          <strong data-price>—</strong>
-          <span class="chip-change" data-change>24h —</span>
-          <small class="mono" data-price-note>Loading live data…</small>
+        <div class="term-mc"><span>Market cap</span><strong data-mc>—</strong></div>
+        <div class="term-kvs">
+          ${kv("price", "Price")}
+          ${kv("liq", "Liquidity")}
+          ${kv("vol", "24h Vol")}
+          ${kv("holders", "Holders")}
         </div>
-      </div>
-      <div class="ca-row"><span class="mono">Official contract</span><code class="token-ca">${TOKEN_CA}</code><button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy</button></div>
+        <span class="live-dot mono" data-live-dot>connecting…</span>
+      </header>
 
-      <div class="live-card chart-card">
-        <div class="chart-head">
-          <div class="tf-switch" role="group" aria-label="Candle interval"><button type="button" class="tf" data-tf="300" aria-pressed="true">5m</button><button type="button" class="tf" data-tf="900" aria-pressed="false">15m</button><button type="button" class="tf" data-tf="3600" aria-pressed="false">1H</button></div>
-          <span class="mono chart-ohlc" data-chart-ohlc></span>
-          <span class="live-dot mono" data-live-dot>connecting…</span>
+      <div class="term-grid">
+        <div class="term-main">
+          <div class="live-card chart-card">
+            <div class="chart-head">
+              <div class="tf-switch" role="group" aria-label="Candle interval">
+                <button type="button" class="tf" data-tf="60" aria-pressed="false">1m</button><button type="button" class="tf" data-tf="300" aria-pressed="true">5m</button><button type="button" class="tf" data-tf="900" aria-pressed="false">15m</button><button type="button" class="tf" data-tf="3600" aria-pressed="false">1H</button><button type="button" class="tf" data-tf="14400" aria-pressed="false">4H</button><button type="button" class="tf" data-tf="86400" aria-pressed="false">1D</button>
+              </div>
+              <div class="tf-switch" role="group" aria-label="Chart value"><button type="button" class="tf" data-mode="price" aria-pressed="false">Price</button><button type="button" class="tf" data-mode="mc" aria-pressed="true">MC</button></div>
+              <span class="mono chart-ohlc" data-chart-ohlc></span>
+            </div>
+            <div class="chart-wrap"><div class="tv-chart" data-tv-chart aria-label="$SPLICE candles" role="img"></div><div class="chart-empty muted" data-chart-empty>Loading chart…</div></div>
+            <p class="card-source mono" data-chart-source></p>
+          </div>
+
+          <div class="live-card tabs-card">
+            <div class="tabs" role="tablist">
+              <button type="button" role="tab" class="tab" data-tab="trades" aria-selected="true">Trades <span class="live-dot mono" data-trades-live></span></button>
+              <button type="button" role="tab" class="tab" data-tab="holders" aria-selected="false">Holders <span class="mono muted" data-holders-count></span></button>
+              <button type="button" role="tab" class="tab" data-tab="burn" aria-selected="false">Burn</button>
+            </div>
+            <div class="tab-panel" data-panel="trades">
+              <table class="trades-table"><thead><tr><th>Age</th><th>Type</th><th>Price</th><th>Amount</th><th>Total USD</th><th>Trader</th></tr></thead><tbody data-trades><tr><td colspan="6" class="muted">Loading…</td></tr></tbody></table>
+              <p class="card-source mono" data-trades-source></p>
+            </div>
+            <div class="tab-panel" data-panel="holders" hidden>
+              <ul class="holder-list" data-holders><li class="muted">Loading…</li></ul>
+              <p class="card-source mono" data-holders-source></p>
+            </div>
+            <div class="tab-panel" data-panel="burn" hidden>
+              <div class="burn-head"><div><span class="mono">Burned</span><strong data-burn-total>—</strong></div><div class="burn-pct"><strong data-burn-pct>—</strong><span class="mono">of total supply</span></div></div>
+              <svg class="burn-bar" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="1000" height="14" rx="7"/><rect class="fill" data-burn-fill width="0" height="14" rx="7"/></svg>
+              <ul class="burn-addresses" data-burn-addresses></ul>
+              <p class="fine">Burned = the $SPLICE balance of the dead address and the zero address, read with <code>balanceOf</code> at the latest block.</p>
+            </div>
+          </div>
         </div>
-        <div class="chart-wrap"><div class="tv-chart" data-tv-chart aria-label="$SPLICE price candles" role="img"></div><div class="chart-empty muted" data-chart-empty>Loading chart…</div></div>
-        <p class="card-source mono" data-chart-source></p>
-      </div>
 
-      <div class="stat-grid stat-grid-4">
-        ${stat("fdvUsd", "Market cap (FDV)")}
-        ${stat("liquidityUsd", "Liquidity")}
-        ${stat("volume24hUsd", "Volume 24h")}
-        ${stat("holders", "Holders")}
-        ${stat("txns24", "Trades 24h")}
-        ${stat("uniqueBuyers24", "Unique buyers 24h")}
-        ${stat("burned", "Burned")}
-        ${stat("totalSupply", "Total supply")}
-      </div>
+        <aside class="term-side">
+          <div class="live-card">
+            <div class="win-tabs" role="tablist" aria-label="Window">
+              <button type="button" class="win" data-win="m5" aria-selected="false"><span>5m</span><strong data-change="m5">—</strong></button>
+              <button type="button" class="win" data-win="h1" aria-selected="false"><span>1h</span><strong data-change="h1">—</strong></button>
+              <button type="button" class="win" data-win="h4" aria-selected="false"><span>4h</span><strong data-change="h4">—</strong></button>
+              <button type="button" class="win" data-win="h24" aria-selected="true"><span>24h</span><strong data-change="h24">—</strong></button>
+            </div>
+            <div class="win-stats">
+              <div><span>Vol</span><strong data-win-vol>—</strong></div>
+              <div><span>Buys</span><strong class="up" data-win-buys>—</strong></div>
+              <div><span>Sells</span><strong class="down" data-win-sells>—</strong></div>
+              <div><span>Net</span><strong data-win-net>—</strong></div>
+            </div>
+            <svg class="flow-bar" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden="true"><rect class="sell" width="1000" height="8" rx="4"/><rect class="buy" data-flow-buy width="0" height="8" rx="4"/></svg>
+            <p class="card-source mono" data-win-source></p>
+          </div>
 
-      <div class="live-card flow-card">
-        <div class="flow-head"><span class="mono">Buys vs sells · 24h</span><span class="mono" data-flow-note></span></div>
-        <svg class="flow-bar" viewBox="0 0 1000 12" preserveAspectRatio="none" aria-hidden="true"><rect class="sell" width="1000" height="12" rx="6"/><rect class="buy" data-flow-buy width="0" height="12" rx="6"/></svg>
-        <div class="flow-legend"><span class="up" data-flow-buys>— buys</span><span class="down" data-flow-sells>— sells</span></div>
-      </div>
+          <div class="live-card side-grid">
+            ${side("fdvUsd", "FDV")}
+            ${side("liquidityUsd", "Liquidity")}
+            ${side("txns24", "Trades 24h")}
+            ${side("uniqueBuyers24", "Unique buyers 24h")}
+            ${side("burned", "Burned")}
+            ${side("totalSupply", "Total supply")}
+          </div>
 
-      <div class="live-grid token-grid">
-        <div class="live-card">
-          <h2>Top holders</h2>
-          <ul class="holder-list" data-holders><li class="muted">Loading…</li></ul>
-          <p class="card-source mono" data-holders-source></p>
-        </div>
-        <div class="live-card">
-          <h2>Latest trades <span class="live-dot mono" data-trades-live></span></h2>
-          <table class="trades-table"><thead><tr><th>Type</th><th>Value</th><th>SPLICE</th><th>Wallet</th><th>Time</th></tr></thead><tbody data-trades><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table>
-          <p class="card-source mono" data-trades-source></p>
-        </div>
-      </div>
+          <div class="live-card contract-card">
+            <span class="mono">Official contract</span>
+            <code class="token-ca">${TOKEN_CA}</code>
+            <button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy</button>
+            <p class="fine">The only official $SPLICE contract, announced on spliceloom.com and @spliceloom. Any other token using the Splice name is not ours.</p>
+          </div>
 
-      <div class="burn-panel">
-        <div class="burn-head"><div><span class="mono">Burned</span><strong data-burn-total>—</strong></div><div class="burn-pct"><strong data-burn-pct>—</strong><span class="mono">of total supply</span></div></div>
-        <svg class="burn-bar" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="1000" height="14" rx="7"/><rect class="fill" data-burn-fill width="0" height="14" rx="7"/></svg>
-        <ul class="burn-addresses" data-burn-addresses></ul>
-        <p class="fine">Burned = the $SPLICE balance of the dead address and the zero address, read with <code>balanceOf</code> at the latest block.</p>
+          <details class="live-card sources-card">
+            <summary class="mono">Sources</summary>
+            <ul class="source-list" data-sources><li class="muted">Loading live data…</li></ul>
+          </details>
+        </aside>
       </div>
-
-      <h2 class="subhead mono">Sources</h2>
-      <ul class="source-list" data-sources><li class="muted">Loading live data…</li></ul>
-      <p class="fine">Live: price, liquidity and new trades are read from the pool on Robinhood Chain every few seconds (reserves, swap events, Chainlink ETH/USD). Candle history and 24h activity come from Codex (refreshed every 20 minutes); the current candle is updated from the live price. Charts by <a href="https://www.tradingview.com/" rel="noopener">TradingView</a> Lightweight Charts. Market data is not financial advice.</p>
+      <p class="fine">Live: price, liquidity and new trades are read from the pool on Robinhood Chain every few seconds (reserves, swap events, Chainlink ETH/USD). Candle history and 24h activity come from Codex (refreshed every 30–60 minutes); the current candle is updated from the live price. Market cap = price × total supply (1,000,000,000). Charts by <a href="https://www.tradingview.com/" rel="noopener">TradingView</a> Lightweight Charts. Market data is not financial advice.</p>
     </div>
   </section>
 <script src="${href(config, loc, "assets/vendor/lightweight-charts-5.2.1.js")}" defer></script>`);
