@@ -119,7 +119,7 @@ created by the registry admin.
 
 ### Does Splice have a token?
 
-Not yet. A Splice token is planned; its contract address will be announced only through the
-official channels — [spliceloom.com](https://spliceloom.com) and [@spliceloom on X](https://x.com/spliceloom). **Any token that claims to be
-Splice before that announcement is not ours.** Splice will never ask for a seed phrase, a private key
+Yes. The official $SPLICE contract address is `0xe61717414b34d1f5a1E17F5a91a980A1f4Ef2806`, announced
+through the official channels — [spliceloom.com](https://spliceloom.com) and [@spliceloom on X](https://x.com/spliceloom). **Any other
+token using the Splice name is not ours.** Splice will never ask for a seed phrase, a private key
 or a payment to install, verify or run a skill.
