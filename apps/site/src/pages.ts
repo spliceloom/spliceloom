@@ -84,6 +84,9 @@ const ARROW = `<svg class="arrow" viewBox="0 0 16 16" aria-hidden="true" focusab
 
 function head(config: SiteConfig, loc: PageLoc, page: { title: string; description: string; path: string; jsonLd?: unknown }): string {
   const canonical = `${baseOf(config, loc.host)}/${page.path}`;
+  // Social preview: one image per host (landing / docs), absolute as crawlers require.
+  const ogImage = `${baseOf(config, loc.host)}/assets/og-${loc.host === "docs" ? "docs" : "landing"}.png`;
+  const ogAlt = loc.host === "docs" ? "Splice Docs — Quickstart, CLI, SDK, MCP, Skills, Security" : "Splice — the composable layer for autonomous agents";
   const a = (path: string) => href(config, loc, path);
   const registryOrigin = new URL(config.registry).origin;
   return `<!doctype html>
@@ -103,7 +106,13 @@ function head(config: SiteConfig, loc: PageLoc, page: { title: string; descripti
 <meta property="og:title" content="${e(page.title)}">
 <meta property="og:description" content="${e(page.description)}">
 <meta property="og:url" content="${e(canonical)}">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${e(ogImage)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${e(ogAlt)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${e(ogImage)}">
+<meta name="twitter:image:alt" content="${e(ogAlt)}">
 <meta name="twitter:site" content="@spliceloom">
 <meta name="twitter:title" content="${e(page.title)}">
 <meta name="twitter:description" content="${e(page.description)}">

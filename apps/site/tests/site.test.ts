@@ -185,7 +185,10 @@ describe("website build against a registry", () => {
     assert.match(index, /<title>Splice — The Composable Layer for Autonomous Agents<\/title>/);
     assert.match(index, /<meta name="description" content="Splice gives autonomous agents reusable capabilities/);
     assert.match(index, /<meta property="og:site_name" content="Splice">/);
-    assert.match(index, /<meta name="twitter:card" content="summary">/);
+    assert.match(index, /<meta name="twitter:card" content="summary_large_image">/);
+    assert.match(index, /<meta property="og:image" content="https:\/\/example\.test\/assets\/og-landing\.png">/);
+    assert.match(readDocs("cli.html"), /<meta property="og:image" content="https:\/\/docs\.example\.test\/assets\/og-docs\.png">/);
+    assert.ok(result.files.includes("assets/og-landing.png") && result.docsFiles.includes("assets/og-docs.png"), "each host serves its own social image");
     assert.match(index, /<link rel="canonical" href="https:\/\/example\.test\/">/);
     assert.match(index, /<script type="application\/ld\+json">/);
     assert.match(index, /Content-Security-Policy/);

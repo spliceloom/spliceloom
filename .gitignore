@@ -44,3 +44,6 @@ playground/
 # Third-party design references and screen recordings (not redistributable, not part of Splice)
 design/reference/
 /*.mp4
+
+# Open Graph image previews (not installed yet)
+ogimage/

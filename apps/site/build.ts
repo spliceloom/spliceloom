@@ -214,6 +214,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   copyCommonAssets(site);
   // Hero video (licensed stock footage, graded; see public/media/CREDITS.md) and its poster.
   for (const media of readdirSync(join(here, "public", "media"))) site.copy(join(here, "public", "media", media), `assets/media/${media}`);
+  site.copy(join(here, "public", "og", "og-landing.png"), "assets/og-landing.png");
   site.write("data/registry.json", JSON.stringify(snapshot, null, 2) + "\n");
   // Earlier docs URLs on the site (spliceloom.com/docs/…, /skills/…) move to the docs host.
   site.write("_redirects", [`/docs ${docsBase}/ 301`, `/docs/introduction ${docsBase}/ 301`, `/docs/:slug ${docsBase}/:slug 301`, `/skills/:name ${docsBase}/skills/:name 301`, ""].join("\n"));
@@ -245,6 +246,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   }
   docs.write("404.html", renderNotFound(config, "docs"));
   copyCommonAssets(docs);
+  docs.copy(join(here, "public", "og", "og-docs.png"), "assets/og-docs.png");
   docs.write("assets/search-index.json", JSON.stringify(searchIndex));
   // docs.<domain>/docs/<page> and /introduction land on the clean docs URL.
   docs.write("_redirects", ["/introduction / 301", "/docs / 301", "/docs/introduction / 301", "/docs/:slug /:slug 301", ""].join("\n"));
