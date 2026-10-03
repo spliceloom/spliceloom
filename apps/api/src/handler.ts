@@ -86,7 +86,7 @@ export interface CacheContext {
  * Stale-while-revalidate: a fresh entry is returned as is; a stale one is returned and refreshed in
  * the background; a missing one is fetched. `keep` decides whether a fetched value may be cached.
  */
-export async function cachedJson<T>(ctx: CacheContext, key: string, freshMs: number, fetch: () => Promise<T>, keep: (value: T) => boolean): Promise<{ value: T; at: number }> {
+export async function cachedJson<T>(ctx: CacheContext, key: string, freshMs: number, fetch: () => Promise<T>, keep: (value: T) => boolean, maxStaleMs = freshMs * 3): Promise<{ value: T; at: number }> {
   const now = ctx.now ?? Date.now;
   const entry = ctx.cache ? await ctx.cache.get(key).catch(() => null) : null;
   const refresh = async () => {
@@ -96,6 +96,15 @@ export async function cachedJson<T>(ctx: CacheContext, key: string, freshMs: num
     return { value, at };
   };
   if (entry && now() - entry.at < freshMs) return entry as { value: T; at: number };
+  // Too old to show: wait for fresh data, and fall back to the old entry only if the refresh fails.
+  if (entry && now() - entry.at >= maxStaleMs) {
+    try {
+      const fresh = await refresh();
+      return keep(fresh.value) ? fresh : (entry as { value: T; at: number });
+    } catch {
+      return entry as { value: T; at: number };
+    }
+  }
   if (entry && ctx.background) {
     ctx.background(refresh().catch(() => undefined));
     return entry as { value: T; at: number };
@@ -215,8 +224,8 @@ export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Pr
     data.onchain.call(TOKEN_POOL, GET_RESERVES),
     data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(TOKEN_POOL)),
     data.oracle.price("ETH"),
-    cachedJson(ctx, "codex:token:v4", CODEX_TTL_MS, () => codexMarket(data), (v) => v.stats !== null),
-    cachedJson(ctx, "codex:token:1h:v1", CODEX_HOURLY_TTL_MS, () => codexHourly(data), (v) => v.chart.length > 0),
+    cachedJson(ctx, "codex:token:v4", CODEX_TTL_MS, () => codexMarket(data), (v) => v.stats !== null, 45 * 60_000),
+    cachedJson(ctx, "codex:token:1h:v1", CODEX_HOURLY_TTL_MS, () => codexHourly(data), (v) => v.chart.length > 0, 90 * 60_000),
     ...BURN_ADDRESSES.map((a) => data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(a))),
   ]);
   const sections = "sections" in token ? (token.sections as Record<string, DataResult<any>>) : {};

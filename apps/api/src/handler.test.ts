@@ -90,6 +90,19 @@ describe("cachedJson (stale-while-revalidate, protects paid quotas)", () => {
     assert.deepEqual(cache.rows.get("k")!.value, { n: 2 });
   });
 
+  it("waits for fresh data when an entry is too old, and keeps the old one if the refresh fails", async () => {
+    const cache = memory();
+    let clock = 0;
+    await cache.set("k", { n: 1 }, 0);
+    clock = 1_000;
+    assert.deepEqual((await cachedJson({ cache, now: () => clock }, "k", 100, async () => ({ n: 2 }), () => true, 300)).value, { n: 2 });
+    clock = 5_000;
+    const failing = async (): Promise<{ n: number }> => {
+      throw new Error("provider down");
+    };
+    assert.deepEqual((await cachedJson({ cache, now: () => clock }, "k", 100, failing, () => true, 300)).value, { n: 2 });
+  });
+
   it("never caches values rejected by keep()", async () => {
     const cache = memory();
     await cachedJson({ cache }, "bad", 100, async () => ({ stats: null }), (v) => v.stats !== null);
