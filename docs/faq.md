@@ -112,6 +112,14 @@ install locked versions from the verified local cache. Commands that need the re
 
 ### Is Splice publicly launched?
 
-Partly. The registry, the official skills and the CLI (`npm install -g @spliceloom/cli`, a
-developer preview) are public; the website and the custom domain are prepared but not published. Accounts for publishing are created by the registry
-admin.
+As a developer preview. The registry (`registry.spliceloom.com`), the official skills, the CLI
+(`npm install -g @spliceloom/cli`), the SDK (`npm install @spliceloom/sdk`), the website, these docs
+and the [source](https://github.com/spliceloom/spliceloom) are public. Accounts for publishing are
+created by the registry admin.
+
+### Does Splice have a token?
+
+Not yet. A Splice token is planned; its contract address will be announced only through the
+official channels — spliceloom.com and the accounts linked from it. **Any token that claims to be
+Splice before that announcement is not ours.** Splice will never ask for a seed phrase, a private key
+or a payment to install, verify or run a skill.

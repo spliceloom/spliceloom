@@ -163,6 +163,7 @@ function footer(loc: PageLoc, config: SiteConfig): string {
     </div>
     <div class="footer-meta">
       <p>Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood Markets, Inc.; Robinhood Chain is referenced as a public network that Splice can read data from.</p>
+      <p class="footer-notice">Splice has not launched a token. A contract address will only ever be announced on spliceloom.com and the official channels linked from it — any token claiming to be Splice before that is not ours.</p>
       <p><span>MIT licensed</span><span>Developer preview</span><span>Registry <code>${e(new URL(config.registry).host)}</code></span></p>
     </div>
   </div>

@@ -206,6 +206,11 @@ Developer preview. Working today: the public registry, CLI, SDK, MCP servers, sa
 capability broker, live data layer and eight official skills. Not yet: package signing, organizations
 and private registries, hosted skill execution. See the [roadmap](https://docs.spliceloom.com/overview).
 
+> [!IMPORTANT]
+> **Splice has not launched a token.** A contract address will only ever be announced on
+> [spliceloom.com](https://spliceloom.com) and the official channels linked from it. Any token that
+> claims to be Splice before that announcement is not ours.
+
 Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood
 Markets, Inc.; Robinhood Chain is referenced as a public network that Splice reads data from.
 Market data is not financial advice.

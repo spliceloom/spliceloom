@@ -1118,6 +1118,14 @@ pre.code:hover .copy-button,
   flex-wrap: wrap;
   gap: 8px 22px;
 }
+.footer-meta .footer-notice {
+  max-width: 820px;
+  padding: 10px 14px;
+  border: 1px solid rgba(168, 193, 217, 0.22);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text-2);
+}
 
 @keyframes sheet-in {
   from {
