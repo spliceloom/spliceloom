@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { SpliceData } from "@spliceloom/data";
-import { MAX_QUESTION, createApiHandler, formatUnits, type Counters } from "./handler.js";
+import { MAX_QUESTION, cachedJson, createApiHandler, formatUnits, type Counters, type JsonCache } from "./handler.js";
 
 const ORIGIN = "https://spliceloom.com";
 const noData = (): SpliceData => {
@@ -64,5 +64,35 @@ describe("api handler", () => {
 
     const global = createApiHandler({ data: noData, origins: [ORIGIN], counters: memoryCounters(), askPerClientDaily: 5, askDailyLimit: 0, now });
     assert.equal((await global(ask({ question: "tvl?" }), "c")).status, 429);
+  });
+});
+
+describe("cachedJson (stale-while-revalidate, protects paid quotas)", () => {
+  const memory = (): JsonCache & { rows: Map<string, { value: unknown; at: number }> } => {
+    const rows = new Map<string, { value: unknown; at: number }>();
+    return { rows, get: async (k) => rows.get(k) ?? null, set: async (k, value, at) => void rows.set(k, { value, at }) };
+  };
+
+  it("fetches once, serves fresh entries, and refreshes stale ones in the background", async () => {
+    const cache = memory();
+    let calls = 0;
+    let clock = 1_000;
+    const tasks: Promise<unknown>[] = [];
+    const ctx = { cache, now: () => clock, background: (p: Promise<unknown>) => void tasks.push(p) };
+    const fetch = async () => ({ n: ++calls });
+    assert.deepEqual((await cachedJson(ctx, "k", 100, fetch, () => true)).value, { n: 1 });
+    clock += 50;
+    assert.deepEqual((await cachedJson(ctx, "k", 100, fetch, () => true)).value, { n: 1 }, "fresh: no provider call");
+    clock += 100;
+    assert.deepEqual((await cachedJson(ctx, "k", 100, fetch, () => true)).value, { n: 1 }, "stale: served immediately");
+    await Promise.all(tasks);
+    assert.equal(calls, 2, "refreshed once in the background");
+    assert.deepEqual(cache.rows.get("k")!.value, { n: 2 });
+  });
+
+  it("never caches values rejected by keep()", async () => {
+    const cache = memory();
+    await cachedJson({ cache }, "bad", 100, async () => ({ stats: null }), (v) => v.stats !== null);
+    assert.equal(cache.rows.size, 0);
   });
 });

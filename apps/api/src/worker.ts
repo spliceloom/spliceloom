@@ -7,7 +7,7 @@
  * and globally per day.
  */
 import { PROVIDER_ENV, SpliceData } from "@spliceloom/data";
-import { createApiHandler, type Counters } from "./handler.js";
+import { createApiHandler, type Counters, type JsonCache } from "./handler.js";
 
 interface D1Like {
   prepare(sql: string): { bind(...values: unknown[]): { first<T>(): Promise<T | null>; run(): Promise<unknown> }; run(): Promise<unknown> };
@@ -48,6 +48,22 @@ function d1Counters(db: D1Like): Counters {
   };
 }
 
+function d1Cache(db: D1Like): JsonCache {
+  let ready: Promise<unknown> | undefined;
+  const init = () => (ready ??= db.prepare("CREATE TABLE IF NOT EXISTS json_cache (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)").run());
+  return {
+    async get(key) {
+      await init();
+      const row = await db.prepare("SELECT v, at FROM json_cache WHERE k = ?1").bind(key).first<{ v: string; at: number }>();
+      return row ? { value: JSON.parse(row.v), at: row.at } : null;
+    },
+    async set(key, value, at) {
+      await init();
+      await db.prepare("INSERT INTO json_cache (k, v, at) VALUES (?1, ?2, ?3) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at").bind(key, JSON.stringify(value), at).run();
+    },
+  };
+}
+
 const positive = (v: unknown) => {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : undefined;
@@ -61,8 +77,10 @@ export default {
       data: () => new SpliceData({ env: providerEnv, envFile: null, platformFetch: (input, init) => fetch(input, init) }),
       origins: env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_ORIGINS,
     };
+    options.background = (task) => ctx.waitUntil(task);
     if (env.DB) {
       options.counters = d1Counters(env.DB);
+      options.cache = d1Cache(env.DB);
       // Expired counters are dropped occasionally (no cron needed).
       if (Math.random() < 0.01) ctx.waitUntil(env.DB.prepare("DELETE FROM counters WHERE expires < ?1").bind(Date.now()).run().catch(() => undefined));
     }
@@ -77,7 +95,7 @@ export default {
     const client = request.headers.get("cf-connecting-ip") ?? "unknown";
 
     // Edge cache for public GETs (keyed by URL only; the Origin header only changes CORS).
-    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token"].includes(new URL(request.url).pathname);
+    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live"].includes(new URL(request.url).pathname);
     if (!cacheable) return handle(request, client);
     const cache = (globalThis as { caches?: { default?: CacheLike } }).caches?.default;
     if (!cache) return handle(request, client);

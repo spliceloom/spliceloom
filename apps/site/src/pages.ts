@@ -87,7 +87,7 @@ export const LOGO = `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true" fo
 
 const ARROW = `<svg class="arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5 11L11 5M6 5h5v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-function head(config: SiteConfig, loc: PageLoc, page: { title: string; description: string; path: string; jsonLd?: unknown }): string {
+function head(config: SiteConfig, loc: PageLoc, page: { title: string; description: string; path: string; jsonLd?: unknown; styleHashes?: string[] }): string {
   const canonical = `${baseOf(config, loc.host)}/${page.path}`;
   // Social preview: one image per host (landing / docs), absolute as crawlers require.
   const ogImage = `${baseOf(config, loc.host)}/assets/og-${loc.host === "docs" ? "docs" : "landing"}.png`;
@@ -100,7 +100,7 @@ function head(config: SiteConfig, loc: PageLoc, page: { title: string; descripti
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self' ${e(registryOrigin)}${e(apiOrigin)}; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'${(page.styleHashes ?? []).map((h) => ` '${h}'`).join("")}; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self' ${e(registryOrigin)}${e(apiOrigin)}; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>${e(page.title)}</title>
 <meta name="description" content="${e(page.description)}">
@@ -829,9 +829,9 @@ ${footer(loc, config)}
 // ------------------------------------------------------------------------------------------ site pages
 
 /** A plain site-host page (blog, registry, brand) with the shared header and footer. */
-function sitePage(config: SiteConfig, loc: PageLoc, page: { title: string; description: string; path: string; bodyClass?: string; jsonLd?: unknown }, main: string): string {
+function sitePage(config: SiteConfig, loc: PageLoc, page: { title: string; description: string; path: string; bodyClass?: string; jsonLd?: unknown; styleHashes?: string[] }, main: string): string {
   const self = page.path.split("/").pop() || "./";
-  return `${head(config, loc, { title: page.title, description: page.description, path: page.path, ...(page.jsonLd ? { jsonLd: page.jsonLd } : {}) })}
+  return `${head(config, loc, { title: page.title, description: page.description, path: page.path, ...(page.jsonLd ? { jsonLd: page.jsonLd } : {}), ...(page.styleHashes ? { styleHashes: page.styleHashes } : {}) })}
 <body class="plain ${page.bodyClass ?? ""}">
 <a class="skip-link" href="${e(self)}" data-section="main" data-local>Skip to content</a>
 ${header(loc, "home", config)}
@@ -970,37 +970,82 @@ export function renderBrand(config: SiteConfig): string {
 
 const stat = (key: string, label: string) => `<div class="stat-card" data-stat="${key}"><span class="mono">${e(label)}</span><strong data-value>—</strong><small data-note></small></div>`;
 
-/** $SPLICE: contract, supply, holders, burns and market data, read live from Robinhood Chain. */
+/** The one inline <style> element Lightweight Charts 5.2.1 injects (allowed by hash, nothing else inline). */
+const LWC_STYLE_HASH = "sha256-3pRED1tOXas1FXFoPb9TGCjmYe9XQsmO9OV23khV2nY=";
+
+/** $SPLICE: live price from the pool, chart, trades, holders and burns, each with its source. */
 export function renderToken(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };
-  return sitePage(config, loc, { title: "$SPLICE token — Splice", description: "The official $SPLICE contract on Robinhood Chain, with supply, holders, burns and market data read live from the chain.", path: "token", bodyClass: "live-page" }, `
+  return sitePage(config, loc, { title: "$SPLICE token — Splice", description: "The official $SPLICE contract on Robinhood Chain: live price, chart, trades, holders and burns, each with its source.", path: "token", bodyClass: "live-page token-page", styleHashes: [LWC_STYLE_HASH] }, `
   <section class="section" data-live="token" data-api="${e(config.api ?? "")}">
     <div class="shell">
-      <p class="kicker">Token</p>
-      <h1 class="display">$SPLICE</h1>
-      <div class="ca-row"><span class="mono">Official contract · Robinhood Chain</span><code class="token-ca">${TOKEN_CA}</code><button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy</button></div>
-      <p class="lead">This is the only official $SPLICE contract. Every number below is read live from the chain and public market data, with its source. Any other token using the Splice name is not ours.</p>
-      <div class="stat-grid">
-        ${stat("priceUsd", "Price")}
-        ${stat("fdvUsd", "Fully diluted value")}
+      <div class="token-head">
+        <div>
+          <p class="kicker">Token · Robinhood Chain</p>
+          <h1 class="display token-title">$SPLICE</h1>
+        </div>
+        <div class="token-price">
+          <strong data-price>—</strong>
+          <span class="chip-change" data-change>24h —</span>
+          <small class="mono" data-price-note>Loading live data…</small>
+        </div>
+      </div>
+      <div class="ca-row"><span class="mono">Official contract</span><code class="token-ca">${TOKEN_CA}</code><button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy</button></div>
+
+      <div class="live-card chart-card">
+        <div class="chart-head">
+          <div class="tf-switch" role="group" aria-label="Candle interval"><button type="button" class="tf" data-tf="300" aria-pressed="true">5m</button><button type="button" class="tf" data-tf="900" aria-pressed="false">15m</button><button type="button" class="tf" data-tf="3600" aria-pressed="false">1H</button></div>
+          <span class="mono chart-ohlc" data-chart-ohlc></span>
+          <span class="live-dot mono" data-live-dot>connecting…</span>
+        </div>
+        <div class="chart-wrap"><div class="tv-chart" data-tv-chart aria-label="$SPLICE price candles" role="img"></div><div class="chart-empty muted" data-chart-empty>Loading chart…</div></div>
+        <p class="card-source mono" data-chart-source></p>
+      </div>
+
+      <div class="stat-grid stat-grid-4">
+        ${stat("fdvUsd", "Market cap (FDV)")}
         ${stat("liquidityUsd", "Liquidity")}
         ${stat("volume24hUsd", "Volume 24h")}
         ${stat("holders", "Holders")}
+        ${stat("txns24", "Trades 24h")}
+        ${stat("uniqueBuyers24", "Unique buyers 24h")}
+        ${stat("burned", "Burned")}
         ${stat("totalSupply", "Total supply")}
       </div>
+
+      <div class="live-card flow-card">
+        <div class="flow-head"><span class="mono">Buys vs sells · 24h</span><span class="mono" data-flow-note></span></div>
+        <svg class="flow-bar" viewBox="0 0 1000 12" preserveAspectRatio="none" aria-hidden="true"><rect class="sell" width="1000" height="12" rx="6"/><rect class="buy" data-flow-buy width="0" height="12" rx="6"/></svg>
+        <div class="flow-legend"><span class="up" data-flow-buys>— buys</span><span class="down" data-flow-sells>— sells</span></div>
+      </div>
+
+      <div class="live-grid token-grid">
+        <div class="live-card">
+          <h2>Top holders</h2>
+          <ul class="holder-list" data-holders><li class="muted">Loading…</li></ul>
+          <p class="card-source mono" data-holders-source></p>
+        </div>
+        <div class="live-card">
+          <h2>Latest trades <span class="live-dot mono" data-trades-live></span></h2>
+          <table class="trades-table"><thead><tr><th>Type</th><th>Value</th><th>SPLICE</th><th>Wallet</th><th>Time</th></tr></thead><tbody data-trades><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table>
+          <p class="card-source mono" data-trades-source></p>
+        </div>
+      </div>
+
       <div class="burn-panel">
         <div class="burn-head"><div><span class="mono">Burned</span><strong data-burn-total>—</strong></div><div class="burn-pct"><strong data-burn-pct>—</strong><span class="mono">of total supply</span></div></div>
         <svg class="burn-bar" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="1000" height="14" rx="7"/><rect class="fill" data-burn-fill width="0" height="14" rx="7"/></svg>
         <ul class="burn-addresses" data-burn-addresses></ul>
         <p class="fine">Burned = the $SPLICE balance of the dead address and the zero address, read with <code>balanceOf</code> at the latest block.</p>
       </div>
+
       <h2 class="subhead mono">Sources</h2>
       <ul class="source-list" data-sources><li class="muted">Loading live data…</li></ul>
-      <p class="fine">Market data is not financial advice. Data refreshes about once a minute.</p>
+      <p class="fine">Live: price, liquidity and new trades are read from the pool on Robinhood Chain every few seconds (reserves, swap events, Chainlink ETH/USD). Candle history and 24h activity come from Codex (refreshed every 20 minutes); the current candle is updated from the live price. Charts by <a href="https://www.tradingview.com/" rel="noopener">TradingView</a> Lightweight Charts. Market data is not financial advice.</p>
     </div>
-  </section>`);
+  </section>
+<script src="${href(config, loc, "assets/vendor/lightweight-charts-5.2.1.js")}" defer></script>`);
 }
-
 /** Robinhood Chain right now: TVL, stock tokens, perps, protocols and new pools. */
 export function renderLive(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };

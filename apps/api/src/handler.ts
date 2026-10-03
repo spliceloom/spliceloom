@@ -4,8 +4,8 @@
  *
  * Platform-neutral (Web-standard Request/Response); the Cloudflare Worker adapter is worker.ts.
  * Every value comes from a provider result with its status and provenance; nothing is invented.
- * The public pages use keyless sources only (DefiLlama, GeckoTerminal, Lighter, public RPC/Blockscout),
- * so page traffic never spends a paid provider quota.
+ * Paid quotas are protected: the token page reads Codex through a global cache refreshed at most every
+ * 20 minutes; everything else on it comes from the chain (RPC, Blockscout) and Chainlink.
  */
 import { isLive, type AiMessage, type Composite, type DataResult, type SpliceData } from "@spliceloom/data";
 import { agentSystemPrompt, runAgentTurn } from "@spliceloom/mcp/agent";
@@ -35,6 +35,9 @@ export interface ApiOptions {
   burst?: (client: string) => Promise<boolean>;
   askModel?: string;
   now?: () => Date;
+  /** Global JSON cache and background tasks (token market data). */
+  cache?: JsonCache;
+  background?: (task: Promise<unknown>) => void;
 }
 
 type Section = { status: string; source?: string; fetchedAt?: string; reason?: string };
@@ -62,24 +65,191 @@ export function formatUnits(raw: bigint, decimals: number): string {
 
 const pad32 = (address: string) => address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
-export async function tokenSummary(data: SpliceData): Promise<Record<string, unknown>> {
-  const [token, market, ...burns] = await Promise.all([
+/** The main $SPLICE pool (SPLICE / WETH, constant-product pair on pons-v2). */
+export const TOKEN_POOL = "0x9f9149e9aad34b75e77f0ae1023f8734706ca47e";
+const GET_RESERVES = "0x0902f1ac";
+
+/** Global cache shared by every data center (D1 in the Worker). */
+export interface JsonCache {
+  get(key: string): Promise<{ value: unknown; at: number } | null>;
+  set(key: string, value: unknown, at: number): Promise<void>;
+}
+
+export interface CacheContext {
+  cache?: JsonCache;
+  /** Runs a background refresh after the response is sent (Worker ctx.waitUntil). */
+  background?: (task: Promise<unknown>) => void;
+  now?: () => number;
+}
+
+/**
+ * Stale-while-revalidate: a fresh entry is returned as is; a stale one is returned and refreshed in
+ * the background; a missing one is fetched. `keep` decides whether a fetched value may be cached.
+ */
+export async function cachedJson<T>(ctx: CacheContext, key: string, freshMs: number, fetch: () => Promise<T>, keep: (value: T) => boolean): Promise<{ value: T; at: number }> {
+  const now = ctx.now ?? Date.now;
+  const entry = ctx.cache ? await ctx.cache.get(key).catch(() => null) : null;
+  const refresh = async () => {
+    const value = await fetch();
+    const at = now();
+    if (ctx.cache && keep(value)) await ctx.cache.set(key, value, at).catch(() => undefined);
+    return { value, at };
+  };
+  if (entry && now() - entry.at < freshMs) return entry as { value: T; at: number };
+  if (entry && ctx.background) {
+    ctx.background(refresh().catch(() => undefined));
+    return entry as { value: T; at: number };
+  }
+  return refresh();
+}
+
+/** Codex market data for the token: refreshed at most every 20 minutes (free plan: 10,000 requests/month). */
+export const CODEX_TTL_MS = 20 * 60_000;
+
+async function codexMarket(data: SpliceData) {
+  const [resolved, chart, trades] = await Promise.all([data.tokens.resolve(TOKEN_CA), data.tokens.chart(TOKEN_CA, { timeframe: "5m", limit: 500 }), data.tokens.trades(TOKEN_CA, { limit: 25 })]);
+  const stats = "stats" in resolved ? resolved.stats : undefined;
+  const candles = live<{ candles: Array<{ time: string; open: string; high: string; low: string; close: string; volumeUsd?: string }> }>(chart)?.candles ?? [];
+  // 5-minute OHLCV candles: [unix seconds, open, high, low, close, volume USD].
+  const points = candles.map((c) => [Math.floor(Date.parse(c.time) / 1000), Number(c.open), Number(c.high), Number(c.low), Number(c.close), Number(c.volumeUsd ?? 0)] as const);
+  const tradeRows = live<{ trades: Array<{ type: string; time: string; txHash?: string; maker?: string; priceUsd?: string; valueUsd?: string }> }>(trades)?.trades ?? [];
+  return {
+    stats: stats
+      ? { priceUsd: stats.priceUsd ?? null, changePct: stats.changePct, volumeUsd: stats.volumeUsd, liquidityUsd: stats.liquidityUsd ?? null, marketCapUsd: stats.marketCapUsd ?? null, holders: stats.holders ?? null, txns24: stats.txns24 ?? null, buys24: stats.buys24 ?? null, sells24: stats.sells24 ?? null, uniqueBuyers24: stats.uniqueBuyers24 ?? null, uniqueSellers24: stats.uniqueSellers24 ?? null, createdAt: stats.createdAt ?? null }
+      : null,
+    chart: points,
+    trades: tradeRows.map((t) => ({ type: t.type, time: t.time, txHash: t.txHash ?? null, maker: t.maker ?? null, priceUsd: t.priceUsd ?? null, valueUsd: t.valueUsd ?? null })),
+    sources: { stats: "stats" in resolved ? { status: stats ? "LIVE" : "UNAVAILABLE", source: "codex", fetchedAt: new Date().toISOString() } : section(resolved as DataResult<unknown>), chart: section(chart), trades: section(trades) },
+  };
+}
+
+/** pons-v2 pair events: Buy (ETH in, SPLICE out) and Sell (SPLICE in, ETH out); data words 0 and 1 are the amounts. */
+const BUY_TOPIC = "0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455";
+const SELL_TOPIC = "0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df";
+/** getLogs is limited to 2,000 blocks (about 3 minutes on Robinhood Chain). */
+const LIVE_BLOCKS = 1999;
+
+/** Live price from the pool reserves and the swaps of the last ~2,000 blocks, all read from the chain. */
+export async function tokenLive(data: SpliceData, ctx: CacheContext = {}): Promise<Record<string, unknown>> {
+  const head = await data.onchain.latestBlock({ fresh: true });
+  const block = live<{ number: string | number; timestamp: string | number }>(head);
+  if (!block) return { status: "UNAVAILABLE", reason: section(head).reason ?? "no block" };
+  const n = Number(block.number);
+  const [reserves, poolBalance, eth, logs] = await Promise.all([
+    data.onchain.call(TOKEN_POOL, GET_RESERVES, { fresh: true }),
+    data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(TOKEN_POOL), { fresh: true }),
+    cachedJson(ctx, "eth:usd:v1", 60_000, async () => live<{ price: string }>(await data.oracle.price("ETH"))?.price ?? null, (v) => v !== null),
+    data.onchain.logs({ address: TOKEN_POOL, fromBlock: Math.max(0, n - LIVE_BLOCKS), toBlock: n }, { fresh: true }),
+  ]);
+  const ethUsd = Number(eth.value ?? NaN);
+  const res = live<{ result: string }>(reserves)?.result;
+  const bal = live<{ result: string }>(poolBalance)?.result;
+  let priceEth: number | null = null;
+  let wethAmount: number | null = null;
+  if (res && res.length >= 130 && bal) {
+    const r0 = BigInt(`0x${res.slice(2, 66)}`);
+    const r1 = BigInt(`0x${res.slice(66, 130)}`);
+    const balance = BigInt(bal);
+    const [splice, weth] = r1 === balance || (r0 !== balance && r1 > r0) ? [r1, r0] : [r0, r1];
+    wethAmount = Number(weth) / 1e18;
+    priceEth = Number(splice) > 0 ? wethAmount / (Number(splice) / 1e18) : null;
+  }
+  const raw = live<{ logs: Array<{ topics: string[]; data: string; blockNumber: string | number; transactionHash: string; logIndex: string | number }> }>(logs)?.logs ?? [];
+  const swapLogs = raw.filter((l) => l.topics[0] === BUY_TOPIC || l.topics[0] === SELL_TOPIC).slice(-30);
+  const blocks = [...new Set(swapLogs.map((l) => Number(l.blockNumber)))].slice(-12);
+  const times = new Map<number, number>();
+  await Promise.all(
+    blocks.map(async (b) => {
+      const r = live<{ timestamp: string | number }>(await data.onchain.block(b));
+      if (r) times.set(b, Number(r.timestamp));
+    }),
+  );
+  const word = (d: string, i: number) => BigInt(`0x${d.slice(2 + i * 64, 2 + (i + 1) * 64) || "0"}`);
+  const swaps = swapLogs
+    .map((l) => {
+      const buy = l.topics[0] === BUY_TOPIC;
+      const ethAmt = Number(buy ? word(l.data, 0) : word(l.data, 1)) / 1e18;
+      const spliceAmt = Number(buy ? word(l.data, 1) : word(l.data, 0)) / 1e18;
+      const ts = times.get(Number(l.blockNumber));
+      return {
+        type: buy ? "Buy" : "Sell",
+        splice: spliceAmt,
+        eth: ethAmt,
+        valueUsd: Number.isFinite(ethUsd) ? ethAmt * ethUsd : null,
+        priceUsd: spliceAmt > 0 && Number.isFinite(ethUsd) ? (ethAmt / spliceAmt) * ethUsd : null,
+        wallet: l.topics[2] ? `0x${l.topics[2].slice(-40)}` : null,
+        txHash: l.transactionHash,
+        block: Number(l.blockNumber),
+        logIndex: Number(l.logIndex),
+        time: ts !== undefined ? new Date(ts * 1000).toISOString() : null,
+      };
+    })
+    .reverse();
+  return {
+    status: "LIVE",
+    block: n,
+    time: new Date(Number(block.timestamp) * 1000).toISOString(),
+    priceEth,
+    ethUsd: Number.isFinite(ethUsd) ? ethUsd : null,
+    priceUsd: priceEth !== null && Number.isFinite(ethUsd) ? priceEth * ethUsd : null,
+    liquidityUsd: wethAmount !== null && Number.isFinite(ethUsd) ? 2 * wethAmount * ethUsd : null,
+    swaps,
+    window: { fromBlock: Math.max(0, n - LIVE_BLOCKS), toBlock: n },
+    sources: { pool: section(reserves), swaps: section(logs), ethUsd: { status: Number.isFinite(ethUsd) ? "LIVE" : "UNAVAILABLE", source: "chainlink-candlestick", fetchedAt: new Date(eth.at).toISOString() } },
+  };
+}
+
+export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Promise<Record<string, unknown>> {
+  const [token, reserves, poolBalance, eth, market, ...burns] = await Promise.all([
     data.onchain.token(TOKEN_CA),
-    data.market.token("robinhood", TOKEN_CA),
+    data.onchain.call(TOKEN_POOL, GET_RESERVES),
+    data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(TOKEN_POOL)),
+    data.oracle.price("ETH"),
+    cachedJson(ctx, "codex:token:v3", CODEX_TTL_MS, () => codexMarket(data), (v) => v.stats !== null),
     ...BURN_ADDRESSES.map((a) => data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(a))),
   ]);
   const sections = "sections" in token ? (token.sections as Record<string, DataResult<any>>) : {};
   const meta = live<{ name?: string; symbol?: string; decimals?: number }>(sections.metadata);
   const supply = live<{ raw: string; formatted: string }>(sections.totalSupply);
-  const holders = live<{ holdersCount?: string }>(sections.holders);
+  const holders = live<{ holdersCount?: string; top?: Array<{ address: string; value: string }> }>(sections.holders);
   const decimals = meta?.decimals ?? 18;
+  const supplyRaw = supply ? BigInt(supply.raw) : undefined;
+  const pct = (raw: bigint) => (supplyRaw ? Number((raw * 1_000_000n) / supplyRaw) / 10_000 : null);
   const burnRows = BURN_ADDRESSES.map((address, i) => {
     const r = live<{ result: string }>(burns[i]);
     return { address, raw: r ? BigInt(r.result) : undefined, section: section(burns[i]) };
   });
   const burnedRaw = burnRows.every((b) => b.raw !== undefined) ? burnRows.reduce((s, b) => s + b.raw!, 0n) : undefined;
-  const supplyRaw = supply ? BigInt(supply.raw) : undefined;
-  const m = live<{ priceUsd?: string; fdvUsd?: string; totalReserveUsd?: string; volumeUsd?: { h24?: string } }>(market);
+
+  // Live price from the pool: WETH reserve / SPLICE reserve × ETH/USD (Chainlink). The SPLICE side is
+  // the reserve equal to the pool's SPLICE balance (no assumption about token order).
+  let pool: Record<string, unknown> | null = null;
+  const res = live<{ result: string }>(reserves)?.result;
+  const bal = live<{ result: string }>(poolBalance)?.result;
+  const ethUsd = Number(live<{ price: string }>(eth)?.price ?? NaN);
+  if (res && res.length >= 130 && bal) {
+    const r0 = BigInt(`0x${res.slice(2, 66)}`);
+    const r1 = BigInt(`0x${res.slice(66, 130)}`);
+    const balance = BigInt(bal);
+    const [splice, weth] = r1 === balance || (r0 !== balance && r1 > r0) ? [r1, r0] : [r0, r1];
+    const wethAmount = Number(weth) / 1e18;
+    const spliceAmount = Number(splice) / 10 ** decimals;
+    const priceEth = spliceAmount > 0 ? wethAmount / spliceAmount : null;
+    pool = {
+      address: TOKEN_POOL,
+      pair: "SPLICE / WETH",
+      reserveSplice: formatUnits(splice, decimals),
+      reserveWeth: formatUnits(weth, 18),
+      priceEth,
+      ethUsd: Number.isFinite(ethUsd) ? ethUsd : null,
+      priceUsd: priceEth !== null && Number.isFinite(ethUsd) ? priceEth * ethUsd : null,
+      // Both sides of a constant-product pool hold equal value at the pool price.
+      liquidityUsd: Number.isFinite(ethUsd) ? 2 * wethAmount * ethUsd : null,
+    };
+  }
+  const priceUsd = (pool?.priceUsd as number | null | undefined) ?? null;
+  const supplyNum = supply ? Number(supply.formatted) : null;
+  const labels: Record<string, string> = { [TOKEN_POOL]: "Liquidity pool (SPLICE / WETH)", [BURN_ADDRESSES[0]!.toLowerCase()]: "Burn address (dead)", [BURN_ADDRESSES[1]!]: "Zero address" };
   return {
     address: TOKEN_CA,
     chain: "robinhood",
@@ -89,22 +259,27 @@ export async function tokenSummary(data: SpliceData): Promise<Record<string, unk
     decimals,
     totalSupply: supply?.formatted ?? null,
     holders: holders?.holdersCount ?? null,
+    priceUsd,
+    fdvUsd: priceUsd !== null && supplyNum !== null ? priceUsd * supplyNum : null,
+    pool,
     burned: {
       total: burnedRaw !== undefined ? formatUnits(burnedRaw, decimals) : null,
-      pctOfSupply: burnedRaw !== undefined && supplyRaw ? Number((burnedRaw * 1_000_000n) / supplyRaw) / 10_000 : null,
+      pctOfSupply: burnedRaw !== undefined ? pct(burnedRaw) : null,
       addresses: burnRows.map((b) => ({ address: b.address, amount: b.raw !== undefined ? formatUnits(b.raw, decimals) : null, ...b.section })),
     },
-    market: m ? { priceUsd: m.priceUsd ?? null, fdvUsd: m.fdvUsd ?? null, liquidityUsd: m.totalReserveUsd ?? null, volume24hUsd: m.volumeUsd?.h24 ?? null } : null,
+    topHolders: (holders?.top ?? []).map((h) => ({ address: h.address, amount: formatUnits(BigInt(h.value), decimals), pctOfSupply: pct(BigInt(h.value)), label: labels[h.address.toLowerCase()] ?? null })),
+    market: { ...market.value, updatedAt: new Date(market.at).toISOString() },
     sources: {
       metadata: section(sections.metadata),
       totalSupply: section(sections.totalSupply),
       holders: section(sections.holders),
       burned: burnRows[0]!.section,
-      market: section(market),
+      pool: section(reserves),
+      ethUsd: section(eth),
+      ...market.value.sources,
     },
   };
 }
-
 export async function chainSummary(data: SpliceData): Promise<Record<string, unknown>> {
   const [defi, gainers, losers, perps, pools, protocols] = await Promise.all([
     data.defi.overview(),
@@ -161,8 +336,21 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
     }
     try {
       if (request.method === "GET" && url.pathname === "/v1/health") return json({ ok: true }, 200, origin, { "cache-control": "no-store" });
-      if (request.method === "GET" && url.pathname === "/v1/token") return json(await tokenSummary(options.data()), 200, origin, { "cache-control": "public, max-age=60" });
-      if (request.method === "GET" && url.pathname === "/v1/chain") return json(await chainSummary(options.data()), 200, origin, { "cache-control": "public, max-age=300" });
+      if (request.method === "GET" && url.pathname === "/v1/token") {
+        const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
+        // The whole summary is served from the global cache too, so no visitor waits for slow providers.
+        const summary = await cachedJson(ctx, "token:summary:v1", 60_000, () => tokenSummary(options.data(), ctx), (v) => v.priceUsd !== null);
+        return json(summary.value, 200, origin, { "cache-control": "public, max-age=30" });
+      }
+      if (request.method === "GET" && url.pathname === "/v1/token/live") {
+        const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
+        return json(await tokenLive(options.data(), ctx), 200, origin, { "cache-control": "public, max-age=4" });
+      }
+      if (request.method === "GET" && url.pathname === "/v1/chain") {
+        const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
+        const summary = await cachedJson(ctx, "chain:summary:v1", 5 * 60_000, () => chainSummary(options.data()), (v) => v.tvl !== null);
+        return json(summary.value, 200, origin, { "cache-control": "public, max-age=60" });
+      }
       if (url.pathname === "/v1/ask") {
         if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, origin);
         return await ask(request, client, origin);

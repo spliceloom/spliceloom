@@ -255,6 +255,8 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   site.copy(join(here, "public", "og", "og-landing.png"), "assets/og-landing.png");
   copyVideos(site);
   for (const file of readdirSync(join(here, "public", "brand"))) site.copy(join(here, "public", "brand", file), `assets/brand/${file}`);
+  // Third-party chart library for the token page (Apache-2.0, see public/vendor/CREDITS.md).
+  for (const file of readdirSync(join(here, "public", "vendor"))) site.copy(join(here, "public", "vendor", file), `assets/vendor/${file}`);
   site.write("data/registry.json", JSON.stringify(snapshot, null, 2) + "\n");
   // registry catalogue, brand kit, blog
   site.write("registry.html", renderRegistry(config, snapshot, SKILL_PAGES));
