@@ -17,6 +17,7 @@
   <a href="https://docs.spliceloom.com/quickstart"><b>Quickstart</b></a> ·
   <a href="https://docs.spliceloom.com/skills"><b>Skills</b></a> ·
   <a href="https://www.npmjs.com/package/@spliceloom/cli"><b>npm</b></a> ·
+  <a href="https://x.com/spliceloom"><b>X</b></a> ·
   <a href="CHANGELOG.md"><b>Changelog</b></a>
 </p>
 
@@ -208,8 +209,8 @@ and private registries, hosted skill execution. See the [roadmap](https://docs.s
 
 > [!IMPORTANT]
 > **Splice has not launched a token.** A contract address will only ever be announced on
-> [spliceloom.com](https://spliceloom.com) and the official channels linked from it. Any token that
-> claims to be Splice before that announcement is not ours.
+> [spliceloom.com](https://spliceloom.com) and [@spliceloom on X](https://x.com/spliceloom). Any
+> token that claims to be Splice before that announcement is not ours.
 
 Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood
 Markets, Inc.; Robinhood Chain is referenced as a public network that Splice reads data from.

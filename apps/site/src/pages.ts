@@ -104,6 +104,7 @@ function head(config: SiteConfig, loc: PageLoc, page: { title: string; descripti
 <meta property="og:description" content="${e(page.description)}">
 <meta property="og:url" content="${e(canonical)}">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:site" content="@spliceloom">
 <meta name="twitter:title" content="${e(page.title)}">
 <meta name="twitter:description" content="${e(page.description)}">
 <meta name="splice:registry" content="${e(config.registry)}">
@@ -158,12 +159,12 @@ function footer(loc: PageLoc, config: SiteConfig): string {
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
-        <div><h2>Project</h2><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
+        <div><h2>Project</h2><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
     </div>
     <div class="footer-meta">
       <p>Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood Markets, Inc.; Robinhood Chain is referenced as a public network that Splice can read data from.</p>
-      <p class="footer-notice">Splice has not launched a token. A contract address will only ever be announced on spliceloom.com and the official channels linked from it — any token claiming to be Splice before that is not ours.</p>
+      <p class="footer-notice">Splice has not launched a token. A contract address will only ever be announced on spliceloom.com and <a href="https://x.com/spliceloom" rel="noopener">@spliceloom on X</a> — any token claiming to be Splice before that is not ours.</p>
       <p><span>MIT licensed</span><span>Developer preview</span><span>Registry <code>${e(new URL(config.registry).host)}</code></span></p>
     </div>
   </div>
@@ -453,7 +454,7 @@ export function renderLanding(config: SiteConfig, data: LandingData, skillPages:
     description: "Infrastructure for composing capabilities into autonomous agents: a verified package registry, a sandboxed runtime, a capability broker and real data providers.",
     url: config.siteUrl,
     license: "https://opensource.org/licenses/MIT",
-    publisher: { "@type": "Organization", name: "Splice", url: config.siteUrl },
+    publisher: { "@type": "Organization", name: "Splice", url: config.siteUrl, sameAs: ["https://x.com/spliceloom", config.githubUrl] },
   };
   const capabilityGroup = (group: (typeof CAPABILITY_GROUPS)[number]) => {
     const caps = group.list ?? data.capabilities.filter((c) => group.prefixes.some((p) => c.startsWith(p)));

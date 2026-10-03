@@ -133,7 +133,9 @@ These are **future concepts**. Nothing in the current code implements them:
 - **Package signing** and provenance (only SHA-256 checksums exist).
 - **Framework adapters** (LangChain, OpenAI Agents, …) on top of the SDK.
 - **Robinhood Chain / onchain skills.**
-- **$SPLICE token.** No token logic exists or is planned for the core.
+- **$SPLICE token.** Planned. The contract address will be announced only on
+  [spliceloom.com](https://spliceloom.com) and [@spliceloom on X](https://x.com/spliceloom); any
+  token claiming to be Splice before that announcement is not ours.
 - **Decentralized registry.**
 - **Permissions marketplace** / reviewed permission policies.
 - **Agent runtime ecosystem** (hosted execution, composition of multiple skills).
