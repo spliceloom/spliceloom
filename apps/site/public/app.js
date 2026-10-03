@@ -644,24 +644,37 @@
     }
     return out;
   };
+  const UP = "#2ebd85";
+  const DOWN = "#f6465d";
   const createTokenChart = (host) => {
     const L = window.LightweightCharts;
     if (!L) return null;
     const chart = L.createChart(host, {
       autoSize: true,
-      layout: { background: { type: "solid", color: "transparent" }, textColor: "#a4a8ad", fontFamily: "Geist Mono, ui-monospace, monospace", fontSize: 11 },
-      grid: { vertLines: { color: "rgba(255,255,255,0.04)" }, horzLines: { color: "rgba(255,255,255,0.04)" } },
-      rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
-      timeScale: { borderColor: "rgba(255,255,255,0.08)", timeVisible: true, secondsVisible: false, rightOffset: 4 },
-      crosshair: { mode: 0 },
+      layout: { background: { type: "solid", color: "transparent" }, textColor: "#8b9096", fontFamily: "Geist Mono, ui-monospace, monospace", fontSize: 11, attributionLogo: true },
+      grid: { vertLines: { color: "rgba(255,255,255,0.035)" }, horzLines: { color: "rgba(255,255,255,0.035)" } },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.08)", scaleMargins: { top: 0.08, bottom: 0.24 } },
+      timeScale: { borderColor: "rgba(255,255,255,0.08)", timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, minBarSpacing: 2 },
+      crosshair: {
+        mode: L.CrosshairMode ? L.CrosshairMode.Normal : 0,
+        vertLine: { color: "rgba(255,255,255,0.25)", width: 1, style: 3, labelBackgroundColor: "#1c1f23" },
+        horzLine: { color: "rgba(255,255,255,0.25)", width: 1, style: 3, labelBackgroundColor: "#1c1f23" },
+      },
     });
     const candles = chart.addSeries(L.CandlestickSeries, {
-      upColor: "#8fcfae", downColor: "#e48d8d", borderUpColor: "#8fcfae", borderDownColor: "#e48d8d", wickUpColor: "#8fcfae", wickDownColor: "#e48d8d",
-      // Plain decimals on the canvas axis (subscript digits are not in every canvas font).
-      priceFormat: { type: "custom", formatter: (p) => (p > 0 && p < 0.0001 ? `$${p.toFixed(Math.ceil(-Math.log10(p)) + 3)}` : usd(p)), minMove: 1e-12 },
+      upColor: UP, downColor: DOWN, borderUpColor: UP, borderDownColor: DOWN, wickUpColor: UP, wickDownColor: DOWN,
+      priceLineStyle: 2,
+      priceFormat: { type: "custom", formatter: (p) => usd(p), minMove: 0.01 },
     });
-    const volume = chart.addSeries(L.HistogramSeries, { priceScaleId: "", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
-    volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    const volume = chart.addSeries(L.HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
+    chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, visible: false });
+    if (L.createTextWatermark) {
+      try {
+        L.createTextWatermark(chart.panes()[0], { horzAlign: "center", vertAlign: "center", lines: [{ text: "SPLICE", color: "rgba(255,255,255,0.035)", fontSize: 96, fontStyle: "600" }] });
+      } catch {
+        /* watermark is decoration only */
+      }
+    }
     return { chart, candles, volume };
   };
   const compact = (v) => {
@@ -734,8 +747,9 @@
     const empty = root.querySelector("[data-chart-empty]");
     const ohlc = root.querySelector("[data-chart-ohlc]");
     const tv = createTokenChart(host);
-    let tf = 300;
+    let tf = 60;
     let mode = "mc";
+    const TF_LABEL = { 60: "1m", 300: "5m", 900: "15m", 3600: "1H", 14400: "4H", 86400: "1D" };
     const scale = () => (mode === "mc" ? supply : 1);
     const fmt = (v) => (mode === "mc" ? usd(v) : usd(v));
     const series = () => {
@@ -743,19 +757,31 @@
       const s = scale();
       return aggregate(src, tf).map((k) => ({ ...k, open: k.open * s, high: k.high * s, low: k.low * s, close: k.close * s }));
     };
-    const volColor = (k) => (k.close >= k.open ? "rgba(143,207,174,0.35)" : "rgba(228,141,141,0.35)");
+    const volColor = (k) => (k.close >= k.open ? "rgba(46,189,133,0.45)" : "rgba(246,70,93,0.45)");
+    /** GMGN-style legend: symbol, interval, OHLC and change of the hovered (or latest) candle. */
+    const legend = (bar, prev) => {
+      if (!bar) return;
+      const chg = prev ? bar.close - prev.close : bar.close - bar.open;
+      const chgPct = prev ? (chg / prev.close) * 100 : ((bar.close - bar.open) / bar.open) * 100;
+      const cls = chg >= 0 ? "up" : "down";
+      ohlc.replaceChildren(el("strong", `SPLICE · ${TF_LABEL[tf]} · ${mode === "mc" ? "MC" : "Price"}`), el("span", " O "), el("b", fmt(bar.open), cls), el("span", " H "), el("b", fmt(bar.high), cls), el("span", " L "), el("b", fmt(bar.low), cls), el("span", " C "), el("b", fmt(bar.close), cls), el("b", ` ${chg >= 0 ? "+" : ""}${pct(chgPct).replace(/^\+/, "")}`, cls));
+    };
+    let current = [];
+    const legendLatest = () => legend(current[current.length - 1], current[current.length - 2]);
     const render = (fit) => {
       if (!tv) return;
       const agg = series();
+      current = agg;
       if (mode === "mc") tv.candles.applyOptions({ priceFormat: { type: "custom", formatter: (p) => usd(p), minMove: 0.01 } });
       else tv.candles.applyOptions({ priceFormat: { type: "custom", formatter: (p) => (p > 0 && p < 0.0001 ? `$${p.toFixed(Math.ceil(-Math.log10(p)) + 3)}` : usd(p)), minMove: 1e-12 } });
       tv.candles.setData(agg.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
       tv.volume.setData(agg.map((k) => ({ time: k.time, value: k.value, color: volColor(k) })));
       empty.hidden = agg.length > 0;
+      legendLatest();
       if (!agg.length) empty.textContent = "No candles for this interval yet.";
       if (fit) {
         const n = agg.length;
-        if (n > 90) tv.chart.timeScale().setVisibleLogicalRange({ from: n - 90, to: n + 3 });
+        if (n > 150) tv.chart.timeScale().setVisibleLogicalRange({ from: n - 150, to: n + 6 });
         else tv.chart.timeScale().fitContent();
       }
     };
@@ -763,7 +789,15 @@
       render(true);
       tv.chart.subscribeCrosshairMove((param) => {
         const bar = param && param.seriesData ? param.seriesData.get(tv.candles) : null;
-        ohlc.textContent = bar ? `O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}` : "";
+        if (!bar) return legendLatest();
+        const i = current.findIndex((k) => k.time === bar.time);
+        legend(bar, i > 0 ? current[i - 1] : null);
+      });
+      const logButton = root.querySelector("[data-log]");
+      logButton.addEventListener("click", () => {
+        const on = logButton.getAttribute("aria-pressed") !== "true";
+        logButton.setAttribute("aria-pressed", String(on));
+        tv.chart.priceScale("right").applyOptions({ mode: on ? 1 : 0 });
       });
     } else empty.textContent = !tv ? "Chart library failed to load." : "Not enough trading history yet.";
     for (const button of root.querySelectorAll("[data-tf]")) {
@@ -807,8 +841,12 @@
       const agg = aggregate(src.slice(-Math.ceil(tf / unit) - 1), tf);
       const k = agg[agg.length - 1];
       const s = scale();
-      tv.candles.update({ time: k.time, open: k.open * s, high: k.high * s, low: k.low * s, close: k.close * s });
+      const bar = { time: k.time, open: k.open * s, high: k.high * s, low: k.low * s, close: k.close * s };
+      tv.candles.update(bar);
       tv.volume.update({ time: k.time, value: k.value, color: volColor(k) });
+      if (current.length && current[current.length - 1].time === bar.time) current[current.length - 1] = { ...bar, value: k.value };
+      else current.push({ ...bar, value: k.value });
+      legendLatest();
     };
 
     // ---- trades (Codex history + live on-chain swaps)

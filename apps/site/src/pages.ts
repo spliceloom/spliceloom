@@ -1004,12 +1004,12 @@ export function renderToken(config: SiteConfig): string {
           <div class="live-card chart-card">
             <div class="chart-head">
               <div class="tf-switch" role="group" aria-label="Candle interval">
-                <button type="button" class="tf" data-tf="60" aria-pressed="false">1m</button><button type="button" class="tf" data-tf="300" aria-pressed="true">5m</button><button type="button" class="tf" data-tf="900" aria-pressed="false">15m</button><button type="button" class="tf" data-tf="3600" aria-pressed="false">1H</button><button type="button" class="tf" data-tf="14400" aria-pressed="false">4H</button><button type="button" class="tf" data-tf="86400" aria-pressed="false">1D</button>
+                <button type="button" class="tf" data-tf="60" aria-pressed="true">1m</button><button type="button" class="tf" data-tf="300" aria-pressed="false">5m</button><button type="button" class="tf" data-tf="900" aria-pressed="false">15m</button><button type="button" class="tf" data-tf="3600" aria-pressed="false">1H</button><button type="button" class="tf" data-tf="14400" aria-pressed="false">4H</button><button type="button" class="tf" data-tf="86400" aria-pressed="false">1D</button>
               </div>
               <div class="tf-switch" role="group" aria-label="Chart value"><button type="button" class="tf" data-mode="price" aria-pressed="false">Price</button><button type="button" class="tf" data-mode="mc" aria-pressed="true">MC</button></div>
-              <span class="mono chart-ohlc" data-chart-ohlc></span>
+              <button type="button" class="tf tf-log" data-log aria-pressed="false">log</button>
             </div>
-            <div class="chart-wrap"><div class="tv-chart" data-tv-chart aria-label="$SPLICE candles" role="img"></div><div class="chart-empty muted" data-chart-empty>Loading chart…</div></div>
+            <div class="chart-wrap"><div class="chart-legend mono" data-chart-ohlc></div><div class="tv-chart" data-tv-chart aria-label="$SPLICE candles" role="img"></div><div class="chart-empty muted" data-chart-empty>Loading chart…</div></div>
             <p class="card-source mono" data-chart-source></p>
           </div>
 
