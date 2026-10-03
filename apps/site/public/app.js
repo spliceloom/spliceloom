@@ -1034,14 +1034,14 @@
     });
   };
   // ------------------------------------------------------------------ /live
-  const fillTable = (key, rows, source) => {
+  const fillTable = (key, rows, source, emptyText = "No data right now.") => {
     const card = root.querySelector(`[data-table="${key}"]`);
     if (!card) return;
     const body = card.querySelector("tbody");
     const cols = card.querySelectorAll("th").length;
     if (!rows.length) {
       const tr = el("tr");
-      const td = el("td", source && source.status !== "LIVE" && source.status !== "CACHED" ? `Unavailable${source.reason ? `: ${source.reason}` : ""}` : "No data right now.", "muted");
+      const td = el("td", source && source.status !== "LIVE" && source.status !== "CACHED" ? `Unavailable${source.reason ? `: ${source.reason}` : ""}` : emptyText, "muted");
       td.colSpan = cols;
       tr.append(td);
       body.replaceChildren(tr);
@@ -1095,8 +1095,8 @@
     } else tvlCard.querySelector("[data-tvl]").textContent = "unavailable";
     tvlCard.querySelector("[data-source]").textContent = sourceText(d.sources.tvl);
     const stockRows = (list) => list.map((s) => row([{ text: s.symbol || "?", cls: "strong", title: s.name }, { text: usd(s.priceUsd) }, { text: pct(s.change24hPct), tone: s.change24hPct }, { text: usd(s.volume24hUsd) }]));
-    fillTable("gainers", stockRows(d.stocks.gainers), d.sources.stocks);
-    fillTable("losers", stockRows(d.stocks.losers), d.sources.stocks);
+    fillTable("gainers", stockRows(d.stocks.gainers), d.sources.stocks, "No stock token is up over the last 24 hours.");
+    fillTable("losers", stockRows(d.stocks.losers), d.sources.stocks, "No stock token is down over the last 24 hours.");
     fillTable("perps", d.perps.map((p) => row([{ text: p.symbol, cls: "strong" }, { text: usd(p.markPrice) }, { text: pct(p.change24hPct), tone: p.change24hPct }, { text: usd(p.openInterestUsd) }])), d.sources.perps);
     fillTable("protocols", d.protocols.map((p) => row([{ text: p.name, cls: "strong" }, { text: p.category || "—" }, { text: usd(p.tvlUsd) }, { text: pct(p.change7dPct), tone: p.change7dPct }])), d.sources.protocols);
     fillTable("newPools", d.newPools.map((p) => row([{ text: p.name, cls: "strong" }, { text: p.dex || "—" }, { text: usd(p.liquidityUsd) }, { text: ago(p.createdAt) }])), d.sources.newPools);
@@ -1105,7 +1105,7 @@
   // ------------------------------------------------------------------ /ask
   // Minimal, safe Markdown for answers: text is escaped first; only headings, lists, tables, bold and code.
   const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const inline = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const inline = (s) => esc(s.replace(/\[([^\]]+)\]\((?:[^)]+)\)/g, "$1")).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
   const markdown = (text) => {
     const out = [];
     const lines = text.replace(/\r/g, "").split("\n");

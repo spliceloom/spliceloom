@@ -404,7 +404,7 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       if (all > (options.askDailyLimit ?? 200)) return json({ error: "rate_limited", message: "Today's free questions are used up. Install the CLI to keep asking: npm install -g @spliceloom/cli" }, 429, origin, noStore);
     }
     const messages: AiMessage[] = [
-      { role: "system", content: agentSystemPrompt(now(), "the Ask box on spliceloom.com, answering visitors") },
+      { role: "system", content: `${agentSystemPrompt(now(), "the Ask box on spliceloom.com, answering visitors")}\n- This answer is shown on a web page: keep tables to at most 5 short columns, do not include links or URLs, and keep the answer under 200 words.` },
       { role: "user", content: question },
     ];
     const t = await runAgentTurn(options.data(), messages, { maxSteps: 5, maxTokens: 900, exclude: ASK_EXCLUDED, ...(options.askModel ? { model: options.askModel } : {}) });
