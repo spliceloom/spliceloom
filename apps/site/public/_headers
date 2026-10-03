@@ -5,6 +5,9 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Cross-Origin-Opener-Policy: same-origin
+  # Pages are served exactly as built: no edge-injected scripts (e.g. analytics beacons).
+  Cache-Control: no-transform
 
 /assets/*
-  Cache-Control: public, max-age=3600
+  ! Cache-Control
+  Cache-Control: public, max-age=3600, no-transform
