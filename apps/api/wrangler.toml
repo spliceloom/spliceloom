@@ -1,0 +1,27 @@
+# Splice public API — Cloudflare Worker (api.spliceloom.com).
+# Live Robinhood Chain data and the $SPLICE token for spliceloom.com, plus the rate-limited Ask endpoint.
+name = "splice-api"
+main = "src/worker.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+routes = [{ pattern = "api.spliceloom.com", custom_domain = true }]
+
+# Ask counters (per client per day, global per day).
+[[d1_databases]]
+binding = "DB"
+database_name = "splice-api"
+# Created with `wrangler d1 create splice-api` (not a secret: useless without account access).
+database_id = "443a0b06-f21d-478b-b300-cf4a8f387106"
+
+# Coarse burst limit for Ask per client IP.
+[[ratelimits]]
+name = "ASK_LIMITER"
+namespace_id = "2001"
+simple = { limit = 3, period = 60 }
+
+[vars]
+ASK_DAILY_LIMIT = "200"
+ASK_PER_CLIENT_DAILY = "10"
+
+# Secrets (not in this file): provider keys from PROVIDER_ENV, set with `wrangler secret bulk`.

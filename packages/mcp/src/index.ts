@@ -18,4 +18,5 @@ export { handleMcpHttp, type McpHttpOptions } from "./http.js";
 export { InstalledSkillsBackend, SpliceMcpServer, mcpToolName, skillResourceUri, toMcpTool, type McpServerOptions } from "./server.js";
 export { serveStdio } from "./stdio.js";
 export { DATA_TOOLS, callDataTool, dataToolDefinitions, type DataTool } from "./data-tools.js";
+export { AGENT_EXCLUDED, agentSystemPrompt, agentTools, forModel, runAgentTurn, type AgentCall, type AgentOptions, type AgentTurn } from "./agent.js";
 export { MIN_MCP_TOKEN_LENGTH, serveMcpHttp, type McpHttpServerOptions, type RunningMcpHttpServer } from "./node-http.js";

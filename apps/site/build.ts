@@ -15,7 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./src/markdown.ts";
-import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
+import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderAsk, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
 import { loadProviders } from "./src/providers.ts";
 import { loadSnapshot, type RegistrySnapshot, type SkillView } from "./src/registry.ts";
 import { BROKER_CAPABILITIES } from "../../packages/spec/dist/index.js";
@@ -28,6 +28,7 @@ export const PRODUCTION_REGISTRY = "https://registry.spliceloom.com";
 export const DEFAULT_SITE_URL = "https://spliceloom.com";
 /** Documentation host (Worker custom domain; see apps/site/wrangler.docs.jsonc). */
 export const DEFAULT_DOCS_URL = "https://docs.spliceloom.com";
+export const DEFAULT_API_URL = "https://api.spliceloom.com";
 export const GITHUB_URL = "https://github.com/spliceloom/spliceloom";
 
 /** Documentation pages published on the website, grouped for navigation. */
@@ -131,6 +132,7 @@ interface BuildArgs {
   docsOut: string;
   siteUrl: string;
   docsUrl: string;
+  api: string;
   snapshot?: string;
   verify: boolean;
 }
@@ -146,6 +148,7 @@ function parseArgs(argv: string[]): BuildArgs {
     docsOut: resolve(get("--docs-out") ?? join(here, "dist-docs")),
     siteUrl: get("--site-url") ?? process.env.SITE_URL ?? DEFAULT_SITE_URL,
     docsUrl: get("--docs-url") ?? process.env.DOCS_URL ?? DEFAULT_DOCS_URL,
+    api: get("--api") ?? process.env.SPLICE_API ?? DEFAULT_API_URL,
     verify: !argv.includes("--no-verify"),
   };
   const snapshot = get("--snapshot");
@@ -169,6 +172,8 @@ export interface BuildOptions {
   docsOut: string;
   siteUrl: string;
   docsUrl: string;
+  /** Public API for the live pages (default https://api.spliceloom.com). */
+  api?: string;
   snapshot?: RegistrySnapshot;
   verify?: boolean;
 }
@@ -236,7 +241,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   const snapshot = options.snapshot ?? (await loadSnapshot(options.registry, { verify: options.verify ?? true }));
   const assetHash = createHash("sha256");
   for (const name of ["styles.css", "app.js"]) assetHash.update(readFileSync(join(here, "public", name)));
-  const config: SiteConfig = { siteUrl: options.siteUrl, docsUrl: options.docsUrl, registry: snapshot.registry, githubUrl: GITHUB_URL, assetVersion: assetHash.digest("hex").slice(0, 10) };
+  const config: SiteConfig = { siteUrl: options.siteUrl, docsUrl: options.docsUrl, registry: snapshot.registry, githubUrl: GITHUB_URL, api: options.api ?? DEFAULT_API_URL, assetVersion: assetHash.digest("hex").slice(0, 10) };
   const siteBase = options.siteUrl.replace(/\/$/, "");
   const docsBase = options.docsUrl.replace(/\/$/, "");
 
@@ -254,13 +259,17 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   // registry catalogue, brand kit, blog
   site.write("registry.html", renderRegistry(config, snapshot, SKILL_PAGES));
   site.write("brand.html", renderBrand(config));
+  // live pages, filled in the browser from the public API
+  site.write("token.html", renderToken(config));
+  site.write("live.html", renderLive(config));
+  site.write("ask.html", renderAsk(config));
   const posts = loadPosts(config);
   for (const post of posts) site.write(`blog/${post.slug}.html`, renderBlogPost(config, post));
   site.write("blog.html", renderBlogIndex(config, posts));
   // Earlier docs URLs on the site (spliceloom.com/docs/…, /skills/…) move to the docs host.
   site.write("_redirects", [`/docs ${docsBase}/ 301`, `/docs/introduction ${docsBase}/ 301`, `/docs/:slug ${docsBase}/:slug 301`, `/skills/:name ${docsBase}/skills/:name 301`, ""].join("\n"));
   site.write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${siteBase}/sitemap.xml\n`);
-  site.write("sitemap.xml", sitemap(siteBase, ["", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
+  site.write("sitemap.xml", sitemap(siteBase, ["", "live", "ask", "token", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
 
   // ---- the docs host: docs at the root (introduction is its home page), skill pages under skills/
   const docs = outputDir(options.docsOut);
@@ -312,7 +321,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!existsSync(args.snapshot)) throw new Error(`snapshot not found: ${args.snapshot}`);
     snapshot = JSON.parse(readFileSync(args.snapshot, "utf8")) as RegistrySnapshot;
   }
-  const buildOptions: BuildOptions = { registry: args.registry, out: args.out, docsOut: args.docsOut, siteUrl: args.siteUrl, docsUrl: args.docsUrl, verify: args.verify };
+  const buildOptions: BuildOptions = { registry: args.registry, out: args.out, docsOut: args.docsOut, siteUrl: args.siteUrl, docsUrl: args.docsUrl, api: args.api, verify: args.verify };
   if (snapshot) buildOptions.snapshot = snapshot;
   let result: BuildResult;
   try {

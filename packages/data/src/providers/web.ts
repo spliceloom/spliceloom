@@ -8,7 +8,7 @@
  * Results are the providers' own (titles, snippets, page text, answers with citations, usage /
  * cost); web content is untrusted third-party text. Health checks never spend credits.
  */
-import { checkNetworkTarget } from "@spliceloom/runtime";
+import { checkNetworkTarget } from "@spliceloom/runtime/net-policy";
 import type { Scope } from "../chains.js";
 import type { HttpClient } from "../http.js";
 import type { ProviderCapability, ProviderData, ProviderKind } from "../provider.js";

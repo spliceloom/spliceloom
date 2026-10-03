@@ -23,7 +23,8 @@
     "packages/sdk",
     "packages/mcp",
     "packages/cli",
-    "apps/registry"
+    "apps/registry",
+    "apps/api"
   ],
   "scripts": {
     "build": "node scripts/clean.mjs && tsc -b && npm run build:worker",

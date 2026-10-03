@@ -6,7 +6,7 @@
  * message is redacted of provider secrets before it leaves this module.
  */
 import { lookup } from "node:dns/promises";
-import { createGuardedFetch } from "@spliceloom/runtime";
+import { createGuardedFetch } from "@spliceloom/runtime/net-policy";
 import { redactSecrets } from "@spliceloom/spec";
 import { ProviderError } from "./result.js";
 
@@ -20,6 +20,11 @@ export interface HttpClientOptions {
   maxBytes?: number;
   /** Test seam: replaces the guarded fetch (unit tests only). */
   fetch?: FetchLike;
+  /**
+   * Runtime-native fetch for platforms without Node.js sockets (Cloudflare Workers, which cannot reach
+   * private networks). Requests stay limited to `hosts` over HTTPS; redirects are re-checked.
+   */
+  platformFetch?: FetchLike;
   /** Client-side limit that keeps requests within the provider's documented rate limit. */
   rateLimit?: { requests: number; perMs: number };
 }
@@ -40,6 +45,26 @@ export interface HttpResponse<T> {
 
 const denied = (message: string) => Object.assign(new Error(message), { code: "ERR_ACCESS_DENIED" });
 
+/** Wraps a platform fetch so that only HTTPS requests to `hosts` are sent, following at most 5 redirects. */
+export function hostLockedFetch(hosts: readonly string[], base: FetchLike): FetchLike {
+  const allowed = new Set(hosts.map((h) => h.toLowerCase()));
+  const check = (url: string): URL => {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || !allowed.has(u.hostname.toLowerCase())) throw denied(`network access to ${u.protocol}//${u.hostname} is not allowed`);
+    return u;
+  };
+  return async (input, init = {}) => {
+    let url = check(input).href;
+    for (let hop = 0; ; hop++) {
+      const response = await base(url, { ...init, redirect: "manual" });
+      const location = response.headers.get("location");
+      if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response;
+      if (hop >= 5) throw denied("too many redirects");
+      url = check(new URL(location, url).href).href;
+    }
+  };
+}
+
 export class HttpClient {
   private readonly fetchImpl: FetchLike;
   readonly timeoutMs: number;
@@ -48,7 +73,7 @@ export class HttpClient {
 
   constructor(private readonly options: HttpClientOptions) {
     const lookupAll = async (host: string) => (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
-    this.fetchImpl = options.fetch ?? (createGuardedFetch(options.hosts, lookupAll, denied) as FetchLike);
+    this.fetchImpl = options.fetch ?? (options.platformFetch ? hostLockedFetch(options.hosts, options.platformFetch) : (createGuardedFetch(options.hosts, lookupAll, denied) as FetchLike));
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
   }

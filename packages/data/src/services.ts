@@ -35,6 +35,8 @@ export interface SpliceDataOptions {
   envFile?: string | null;
   /** Test seam (unit tests only): replaces network access for every provider. */
   fetch?: FetchLike;
+  /** Runtime-native fetch (Cloudflare Workers); each provider stays limited to its own hosts. */
+  platformFetch?: FetchLike;
 }
 
 export interface CallOptions {
@@ -349,6 +351,7 @@ export class SpliceData {
       if (timeoutMs) httpOptions.timeoutMs = timeoutMs;
       if (rateLimit) httpOptions.rateLimit = rateLimit;
       if (options.fetch) httpOptions.fetch = options.fetch;
+      if (options.platformFetch) httpOptions.platformFetch = options.platformFetch;
       return new HttpClient(httpOptions);
     };
     for (const p of rpcProviders(v, http)) this.registry.register(p);

@@ -1,0 +1,14 @@
+{
+  "name": "@spliceloom/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Splice public API: live Robinhood Chain data, the $SPLICE token and Ask for spliceloom.com (Cloudflare Worker).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/handler.js",
+  "types": "./dist/handler.d.ts",
+  "dependencies": {
+    "@spliceloom/data": "0.1.0",
+    "@spliceloom/mcp": "0.1.0"
+  }
+}

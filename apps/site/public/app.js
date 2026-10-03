@@ -558,3 +558,267 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
   else run();
 })();
+
+// Live pages (/token, /live, /ask): data from the public API, every panel labelled with its source.
+(() => {
+  "use strict";
+  const root = document.querySelector("[data-live]");
+  if (!root) return;
+  const api = (root.getAttribute("data-api") || "").replace(/\/$/, "");
+  const kind = root.getAttribute("data-live");
+  const SVG = "http://www.w3.org/2000/svg";
+
+  const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  const usd = (v) => {
+    const n = num(v);
+    if (!Number.isFinite(n)) return "—";
+    if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+    if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+    if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+    if (Math.abs(n) >= 1) return `$${n.toFixed(2)}`;
+    if (n === 0) return "$0";
+    return `$${n.toPrecision(4)}`;
+  };
+  const amount = (v) => {
+    const n = num(v);
+    return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—";
+  };
+  const pct = (v) => {
+    const n = num(v);
+    return Number.isFinite(n) ? `${n > 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
+  };
+  const tone = (el, v) => {
+    const n = num(v);
+    if (Number.isFinite(n) && n !== 0) el.classList.add(n > 0 ? "up" : "down");
+  };
+  const ago = (iso) => {
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return "";
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
+  };
+  const sourceText = (s) => (!s ? "" : s.status === "LIVE" || s.status === "CACHED" ? `${s.status} · ${s.source || "?"} · ${ago(s.fetchedAt)}` : `${s.status}${s.reason ? ` · ${s.reason}` : ""}`);
+  const el = (tag, text, cls) => {
+    const n = document.createElement(tag);
+    if (text !== undefined) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  };
+  const getJson = async (path) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const r = await fetch(`${api}${path}`, { credentials: "omit", signal: ctrl.signal });
+      if (!r.ok) throw new Error(String(r.status));
+      return await r.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // ------------------------------------------------------------------ /token
+  const token = async () => {
+    const sources = root.querySelector("[data-sources]");
+    let d;
+    try {
+      d = await getJson("/v1/token");
+    } catch {
+      sources.replaceChildren(el("li", "Live data is unavailable right now. Try again in a minute.", "muted"));
+      return;
+    }
+    const set = (key, text, note) => {
+      const card = root.querySelector(`[data-stat="${key}"]`);
+      if (!card) return;
+      card.querySelector("[data-value]").textContent = text;
+      card.querySelector("[data-note]").textContent = note || "";
+    };
+    const m = d.market || {};
+    set("priceUsd", usd(m.priceUsd), sourceText(d.sources.market));
+    set("fdvUsd", usd(m.fdvUsd), sourceText(d.sources.market));
+    set("liquidityUsd", usd(m.liquidityUsd), sourceText(d.sources.market));
+    set("volume24hUsd", usd(m.volume24hUsd), sourceText(d.sources.market));
+    set("holders", amount(d.holders), sourceText(d.sources.holders));
+    set("totalSupply", amount(d.totalSupply), sourceText(d.sources.totalSupply));
+    const b = d.burned || {};
+    root.querySelector("[data-burn-total]").textContent = b.total !== null ? `${amount(b.total)} SPLICE` : "unavailable";
+    root.querySelector("[data-burn-pct]").textContent = b.pctOfSupply !== null ? `${num(b.pctOfSupply).toFixed(2)}%` : "—";
+    if (b.pctOfSupply !== null) root.querySelector("[data-burn-fill]").setAttribute("width", String(Math.min(1000, Math.max(0, num(b.pctOfSupply) * 10))));
+    const list = root.querySelector("[data-burn-addresses]");
+    list.replaceChildren(...(b.addresses || []).map((a) => {
+      const li = el("li");
+      li.append(el("code", a.address), el("span", a.amount !== null ? `${amount(a.amount)} SPLICE` : "unavailable"), el("small", sourceText(a), "mono"));
+      return li;
+    }));
+    const labels = { metadata: "Name, symbol, decimals", totalSupply: "Total supply", holders: "Holders", burned: "Burned balances", market: "Price, liquidity, volume" };
+    sources.replaceChildren(...Object.entries(d.sources).map(([k, s]) => {
+      const li = el("li");
+      li.append(el("span", labels[k] || k), el("span", sourceText(s), `mono status-${(s.status || "").toLowerCase()}`));
+      return li;
+    }));
+  };
+
+  // ------------------------------------------------------------------ /live
+  const fillTable = (key, rows, source) => {
+    const card = root.querySelector(`[data-table="${key}"]`);
+    if (!card) return;
+    const body = card.querySelector("tbody");
+    const cols = card.querySelectorAll("th").length;
+    if (!rows.length) {
+      const tr = el("tr");
+      const td = el("td", source && source.status !== "LIVE" && source.status !== "CACHED" ? `Unavailable${source.reason ? `: ${source.reason}` : ""}` : "No data right now.", "muted");
+      td.colSpan = cols;
+      tr.append(td);
+      body.replaceChildren(tr);
+    } else body.replaceChildren(...rows);
+    card.querySelector("[data-source]").textContent = sourceText(source);
+  };
+  const row = (cells) => {
+    const tr = el("tr");
+    for (const c of cells) {
+      const td = el("td", c.text, c.cls);
+      if (c.tone !== undefined) tone(td, c.tone);
+      if (c.title) td.title = c.title;
+      tr.append(td);
+    }
+    return tr;
+  };
+  const chart = (svg, history) => {
+    const v = history.map((h) => h[1]);
+    if (v.length < 2) return;
+    const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+    const pts = v.map((y, i) => [(i * 1000) / (v.length - 1), 205 - ((y - lo) / span) * 185]);
+    const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+    const area = document.createElementNS(SVG, "path");
+    area.setAttribute("d", `${d} L1000 220 L0 220Z`);
+    area.setAttribute("class", "area");
+    const line = document.createElementNS(SVG, "path");
+    line.setAttribute("d", d);
+    line.setAttribute("class", "line");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    const title = document.createElementNS(SVG, "title");
+    title.textContent = `${history[0][0]} ${usd(v[0])} → ${history[history.length - 1][0]} ${usd(v[v.length - 1])}`;
+    svg.replaceChildren(title, area, line);
+  };
+  const live = async () => {
+    let d;
+    try {
+      d = await getJson("/v1/chain");
+    } catch {
+      for (const card of root.querySelectorAll("[data-table] tbody td")) card.textContent = "Live data is unavailable right now.";
+      return;
+    }
+    const tvlCard = root.querySelector('[data-panel="tvl"]');
+    if (d.tvl) {
+      tvlCard.querySelector("[data-tvl]").textContent = usd(d.tvl.tvlUsd);
+      for (const [k, v] of [["1d", d.tvl.change1dPct], ["7d", d.tvl.change7dPct], ["30d", d.tvl.change30dPct]]) {
+        const span = tvlCard.querySelector(`[data-change="${k}"]`);
+        span.textContent = `${k} ${pct(v)}`;
+        tone(span, v);
+      }
+      chart(tvlCard.querySelector("[data-tvl-chart]"), d.tvl.history || []);
+    } else tvlCard.querySelector("[data-tvl]").textContent = "unavailable";
+    tvlCard.querySelector("[data-source]").textContent = sourceText(d.sources.tvl);
+    const stockRows = (list) => list.map((s) => row([{ text: s.symbol || "?", cls: "strong", title: s.name }, { text: usd(s.priceUsd) }, { text: pct(s.change24hPct), tone: s.change24hPct }, { text: usd(s.volume24hUsd) }]));
+    fillTable("gainers", stockRows(d.stocks.gainers), d.sources.stocks);
+    fillTable("losers", stockRows(d.stocks.losers), d.sources.stocks);
+    fillTable("perps", d.perps.map((p) => row([{ text: p.symbol, cls: "strong" }, { text: usd(p.markPrice) }, { text: pct(p.change24hPct), tone: p.change24hPct }, { text: usd(p.openInterestUsd) }])), d.sources.perps);
+    fillTable("protocols", d.protocols.map((p) => row([{ text: p.name, cls: "strong" }, { text: p.category || "—" }, { text: usd(p.tvlUsd) }, { text: pct(p.change7dPct), tone: p.change7dPct }])), d.sources.protocols);
+    fillTable("newPools", d.newPools.map((p) => row([{ text: p.name, cls: "strong" }, { text: p.dex || "—" }, { text: usd(p.liquidityUsd) }, { text: ago(p.createdAt) }])), d.sources.newPools);
+  };
+
+  // ------------------------------------------------------------------ /ask
+  // Minimal, safe Markdown for answers: text is escaped first; only headings, lists, tables, bold and code.
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const inline = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const markdown = (text) => {
+    const out = [];
+    const lines = text.replace(/\r/g, "").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*\|/.test(line)) {
+        const rows = [];
+        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+        i--;
+        const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+        const body = rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
+        const [first, ...rest] = body;
+        if (first) out.push(`<table><thead><tr>${cells(first).map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rest.map((r) => `<tr>${cells(r).map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+      } else if (/^\s*[-*] /.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*[-*] /.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*] /, ""));
+        i--;
+        out.push(`<ul>${items.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>`);
+      } else if (/^\s*\d+\. /.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*\d+\. /.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+\. /, ""));
+        i--;
+        out.push(`<ol>${items.map((x) => `<li>${inline(x)}</li>`).join("")}</ol>`);
+      } else if (/^#{1,6} /.test(line)) out.push(`<h3>${inline(line.replace(/^#+ /, ""))}</h3>`);
+      else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+    }
+    return out.join("");
+  };
+  const ask = () => {
+    const form = root.querySelector("[data-ask-form]");
+    const input = form.querySelector("textarea");
+    const button = form.querySelector("button");
+    const count = root.querySelector("[data-ask-count]");
+    const result = root.querySelector("[data-ask-result]");
+    const calls = root.querySelector("[data-ask-calls]");
+    const answer = root.querySelector("[data-ask-answer]");
+    const meta = root.querySelector("[data-ask-meta]");
+    input.addEventListener("input", () => (count.textContent = `${input.value.length} / 300`));
+    for (const chip of root.querySelectorAll("[data-ask-example]")) {
+      chip.addEventListener("click", () => {
+        input.value = chip.getAttribute("data-ask-example");
+        count.textContent = `${input.value.length} / 300`;
+        form.requestSubmit();
+      });
+    }
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = input.value.trim();
+      if (!question || button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Working…";
+      result.hidden = false;
+      calls.replaceChildren(el("li", "Calling Splice tools on live data…", "muted"));
+      answer.replaceChildren();
+      meta.textContent = "";
+      try {
+        const r = await fetch(`${api}/v1/ask`, { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ question }) });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          calls.replaceChildren();
+          answer.replaceChildren(el("p", body.message || "Ask is unavailable right now. Try again shortly.", "muted"));
+          return;
+        }
+        calls.replaceChildren(...body.calls.map((c) => {
+          const ok = c.status === "LIVE" || c.status === "CACHED";
+          const li = el("li");
+          const args = Object.entries(c.args || {}).filter(([k]) => k !== "fresh").map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(" ");
+          li.append(el("span", ok ? "✓" : "–", ok ? "ok" : "warn"), el("span", ` ${c.name} ${args} → ${c.status}${c.source ? ` ${c.source}` : ""}`));
+          return li;
+        }));
+        answer.innerHTML = markdown(body.answer || "(no answer)");
+        const sources = [...new Set(body.calls.flatMap((c) => (c.source ? c.source.split(",") : [])))];
+        meta.textContent = `${body.calls.length} tool call${body.calls.length === 1 ? "" : "s"}${sources.length ? ` · sources: ${sources.join(", ")}` : ""} · model ${body.model || "?"} · not financial advice`;
+      } catch {
+        calls.replaceChildren();
+        answer.replaceChildren(el("p", "Ask is unavailable right now. Try again shortly.", "muted"));
+      } finally {
+        button.disabled = false;
+        button.textContent = "Ask";
+      }
+    });
+  };
+
+  const run = () => {
+    if (!api) return;
+    if (kind === "token") token();
+    else if (kind === "chain") live();
+    else if (kind === "ask") ask();
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  else run();
+})();

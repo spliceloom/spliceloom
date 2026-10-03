@@ -1,7 +1,7 @@
 export { BROKER, createCapabilityBroker } from "./broker.js";
 export { CHAINS, DEFAULT_CHAIN, GLOBAL_SCOPE, chainScope, resolveChain, resolveMarketScope, type ChainInfo, type Scope } from "./chains.js";
 export { PROVIDER_ENV, findEnvFile, loadProviderEnv, parseProviderEnvFile, type LoadedProviderEnv, type ProviderEnv } from "./env.js";
-export { HttpClient, rateLimitFrom, type FetchLike, type RequestOptions } from "./http.js";
+export { HttpClient, hostLockedFetch, rateLimitFrom, type FetchLike, type RequestOptions } from "./http.js";
 export {
   CAPABILITIES,
   ProviderRegistry,

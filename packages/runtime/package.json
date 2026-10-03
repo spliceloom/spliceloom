@@ -20,6 +20,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./net-policy": {
+      "types": "./dist/net-policy.d.ts",
+      "default": "./dist/net-policy.js"
     }
   },
   "files": [

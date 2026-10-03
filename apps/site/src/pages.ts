@@ -21,6 +21,8 @@ export interface SiteConfig {
   docsUrl: string;
   /** Registry API base URL used for live data in the browser. */
   registry: string;
+  /** Public API (live chain data, the token, Ask) used by the live pages in the browser. */
+  api?: string;
   /** Link for the GitHub call to action. */
   githubUrl: string;
   /** Content hash of styles.css + app.js, appended as ?v= so a deploy is never hidden by the cache. */
@@ -92,12 +94,13 @@ function head(config: SiteConfig, loc: PageLoc, page: { title: string; descripti
   const ogAlt = loc.host === "docs" ? "Splice Docs — Quickstart, CLI, SDK, MCP, Skills, Security" : "Splice — the composable layer for autonomous agents";
   const a = (path: string) => href(config, loc, path);
   const registryOrigin = new URL(config.registry).origin;
+  const apiOrigin = config.api ? ` ${new URL(config.api).origin}` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self' ${e(registryOrigin)}; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self' ${e(registryOrigin)}${e(apiOrigin)}; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>${e(page.title)}</title>
 <meta name="description" content="${e(page.description)}">
@@ -144,6 +147,7 @@ function header(loc: PageLoc, current: "home" | "docs" | "skills", config: SiteC
       ${link("docs/capabilities", "Capabilities", "capabilities")}
       ${link("docs/robinhood-chain", "Robinhood Chain", "robinhood-chain")}
       ${link("docs/security", "Security", "security")}
+      ${link("live", "Live")}
       ${link("docs/introduction", "Docs", undefined, current === "docs")}
       <div class="nav-extra"><a class="btn btn-ghost" href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a class="btn btn-solid" href="${a("docs/quickstart")}">Get started</a></div>
     </nav>
@@ -171,7 +175,7 @@ function footer(loc: PageLoc, config: SiteConfig): string {
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
-        <div><h2>Project</h2><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
+        <div><h2>Project</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
     </div>
     <div class="footer-meta">
@@ -958,4 +962,96 @@ export function renderBrand(config: SiteConfig): string {
   <symbol id="brand-mark" viewBox="0 0 32 32"><path d="M6 11H8.5M13.5 11H26M6 21H18.5M23.5 21H26" stroke="#EDEBE7" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M11 6V18.5M11 23.5V26M21 6V8.5" stroke="#EDEBE7" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M21 13.5V26" stroke="#A8C1D9" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
   <symbol id="brand-mark-dark" viewBox="0 0 32 32"><path d="M6 11H8.5M13.5 11H26M6 21H18.5M23.5 21H26" stroke="#0B0C0D" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M11 6V18.5M11 23.5V26M21 6V8.5" stroke="#0B0C0D" stroke-opacity=".5" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M21 13.5V26" stroke="#6F93B6" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
 </svg>`);
+}
+
+// ------------------------------------------------------------------------------- live data pages
+// These pages are rendered empty and filled in the browser from the public API (api.spliceloom.com).
+// Every value shown carries its source and fetch time; a failed source is shown as unavailable.
+
+const stat = (key: string, label: string) => `<div class="stat-card" data-stat="${key}"><span class="mono">${e(label)}</span><strong data-value>—</strong><small data-note></small></div>`;
+
+/** $SPLICE: contract, supply, holders, burns and market data, read live from Robinhood Chain. */
+export function renderToken(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "$SPLICE token — Splice", description: "The official $SPLICE contract on Robinhood Chain, with supply, holders, burns and market data read live from the chain.", path: "token", bodyClass: "live-page" }, `
+  <section class="section" data-live="token" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <p class="kicker">Token</p>
+      <h1 class="display">$SPLICE</h1>
+      <div class="ca-row"><span class="mono">Official contract · Robinhood Chain</span><code class="token-ca">${TOKEN_CA}</code><button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy</button></div>
+      <p class="lead">This is the only official $SPLICE contract. Every number below is read live from the chain and public market data, with its source. Any other token using the Splice name is not ours.</p>
+      <div class="stat-grid">
+        ${stat("priceUsd", "Price")}
+        ${stat("fdvUsd", "Fully diluted value")}
+        ${stat("liquidityUsd", "Liquidity")}
+        ${stat("volume24hUsd", "Volume 24h")}
+        ${stat("holders", "Holders")}
+        ${stat("totalSupply", "Total supply")}
+      </div>
+      <div class="burn-panel">
+        <div class="burn-head"><div><span class="mono">Burned</span><strong data-burn-total>—</strong></div><div class="burn-pct"><strong data-burn-pct>—</strong><span class="mono">of total supply</span></div></div>
+        <svg class="burn-bar" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="1000" height="14" rx="7"/><rect class="fill" data-burn-fill width="0" height="14" rx="7"/></svg>
+        <ul class="burn-addresses" data-burn-addresses></ul>
+        <p class="fine">Burned = the $SPLICE balance of the dead address and the zero address, read with <code>balanceOf</code> at the latest block.</p>
+      </div>
+      <h2 class="subhead mono">Sources</h2>
+      <ul class="source-list" data-sources><li class="muted">Loading live data…</li></ul>
+      <p class="fine">Market data is not financial advice. Data refreshes about once a minute.</p>
+    </div>
+  </section>`);
+}
+
+/** Robinhood Chain right now: TVL, stock tokens, perps, protocols and new pools. */
+export function renderLive(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  const table = (key: string, title: string, cols: string[]) => `<div class="live-card" data-table="${key}"><h2>${e(title)}</h2><table><thead><tr>${cols.map((c) => `<th>${e(c)}</th>`).join("")}</tr></thead><tbody><tr><td colspan="${cols.length}" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>`;
+  return sitePage(config, loc, { title: "Robinhood Chain live — Splice", description: "Robinhood Chain right now: TVL, stock tokens, perpetuals, DeFi protocols and new pools, live from public sources through Splice.", path: "live", bodyClass: "live-page" }, `
+  <section class="section" data-live="chain" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Live</p><h1 class="display">Robinhood Chain, right now.</h1></div>
+        <p class="section-lead">The same data the <code>splice</code> CLI, SDK and MCP servers return, each panel labelled with its source and fetch time. Refreshes every few minutes.</p>
+      </div>
+      <div class="live-card tvl-card" data-panel="tvl">
+        <div class="tvl-head"><div><span class="mono">Total value locked</span><strong data-tvl>—</strong></div><div class="tvl-changes"><span data-change="1d">1d —</span><span data-change="7d">7d —</span><span data-change="30d">30d —</span></div></div>
+        <svg class="tvl-chart" data-tvl-chart viewBox="0 0 1000 220" preserveAspectRatio="none" aria-label="TVL over the last 30 days" role="img"></svg>
+        <p class="card-source mono" data-source></p>
+      </div>
+      <div class="live-grid">
+        ${table("gainers", "Stock tokens · top gainers 24h", ["Token", "Price", "24h", "Volume"])}
+        ${table("losers", "Stock tokens · top losers 24h", ["Token", "Price", "24h", "Volume"])}
+        ${table("perps", "Perpetuals · by volume", ["Market", "Mark", "24h", "Open interest"])}
+        ${table("protocols", "DeFi protocols · by TVL", ["Protocol", "Category", "TVL", "7d"])}
+      </div>
+      ${table("newPools", "Newest pools", ["Pool", "DEX", "Liquidity", "Created"])}
+      <p class="fine">New pools are listed automatically from public market data. They are not reviewed or endorsed by Splice; many new tokens are risky. Run <code>splice report &lt;token&gt;</code> for security checks. Not financial advice.</p>
+      <p class="more"><a class="text-link" href="${href(config, loc, "ask")}">Ask a question about this data ${ARROW}</a><a class="text-link" href="${href(config, loc, "docs/robinhood-chain")}">Robinhood Chain data in the CLI ${ARROW}</a></p>
+    </div>
+  </section>`);
+}
+
+/** Ask: the research agent in the browser, rate-limited, every answer with its tool calls and sources. */
+export function renderAsk(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  const examples = ["What is the total value locked on Robinhood Chain?", "Which Robinhood stock tokens moved the most today?", "Top perpetual markets on Robinhood Chain by volume", "Show me the $SPLICE token supply and holders"];
+  return sitePage(config, loc, { title: "Ask — Splice", description: "Ask questions about Robinhood Chain in plain English. Splice answers from live data and shows every tool call and source.", path: "ask", bodyClass: "live-page" }, `
+  <section class="section" data-live="ask" data-api="${e(config.api ?? "")}">
+    <div class="shell narrow">
+      <p class="kicker">Ask</p>
+      <h1 class="display">Ask Robinhood Chain anything.</h1>
+      <p class="lead">The agent behind <code>splice ask</code>, in your browser. It calls Splice's read-only data tools, shows each call with its status, and answers with its sources.</p>
+      <form class="ask-form" data-ask-form>
+        <label class="visually-hidden" for="ask-q">Question</label>
+        <textarea id="ask-q" name="q" rows="2" maxlength="300" placeholder="Ask about tokens, stock tokens, perps, DeFi or wallets…" required></textarea>
+        <div class="ask-actions"><span class="mono" data-ask-count>0 / 300</span><button class="btn btn-solid" type="submit">Ask</button></div>
+      </form>
+      <div class="ask-examples">${examples.map((q) => `<button type="button" class="chip" data-ask-example="${e(q)}">${e(q)}</button>`).join("")}</div>
+      <div class="ask-result" data-ask-result hidden>
+        <ul class="ask-calls mono" data-ask-calls></ul>
+        <div class="prose ask-answer" data-ask-answer></div>
+        <p class="card-source mono" data-ask-meta></p>
+      </div>
+      <p class="fine">Free questions are limited per visitor and per day. For unlimited questions, run <code>npm install -g @spliceloom/cli</code> and <code>splice ask</code> with your own keys. Answers come from live data and can still be wrong; not financial advice. Questions are processed by the AI model provider and are not stored by Splice.</p>
+    </div>
+  </section>`);
 }
