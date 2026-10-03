@@ -1127,6 +1127,15 @@ pre.code:hover .copy-button,
   color: var(--text-2);
 }
 
+.footer-notice .token-ca {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.footer-notice .copy-inline {
+  margin-left: 6px;
+}
+
 @keyframes sheet-in {
   from {
     opacity: 0;

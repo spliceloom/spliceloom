@@ -11,6 +11,9 @@ import { escapeHtml } from "./markdown.ts";
 import type { ProviderView } from "./providers.ts";
 import type { RegistrySnapshot, SkillView } from "./registry.ts";
 
+/** The official $SPLICE contract address, as announced on @spliceloom. */
+export const TOKEN_CA = "0xe61717414b34d1f5a1E17F5a91a980A1f4Ef2806";
+
 export interface SiteConfig {
   /** Public base URL of the site (canonical links, sitemap, Open Graph). */
   siteUrl: string;
@@ -173,7 +176,7 @@ function footer(loc: PageLoc, config: SiteConfig): string {
     </div>
     <div class="footer-meta">
       <p>Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood Markets, Inc.; Robinhood Chain is referenced as a public network that Splice can read data from.</p>
-      <p class="footer-notice">Splice has not launched a token. A contract address will only ever be announced on spliceloom.com and <a href="https://x.com/spliceloom" rel="noopener">@spliceloom on X</a> — any token claiming to be Splice before that is not ours.</p>
+      <p class="footer-notice">Official $SPLICE contract address: <code class="token-ca">${TOKEN_CA}</code> <button type="button" class="copy-inline" data-copy="${TOKEN_CA}">Copy</button><br>This is the only official contract, announced on spliceloom.com and <a href="https://x.com/spliceloom" rel="noopener">@spliceloom on X</a>. Any other token using the Splice name is not ours.</p>
       <p><span>MIT licensed</span><span>Developer preview</span><span>Registry <code>${e(new URL(config.registry).host)}</code></span><span class="health" data-registry-health><i aria-hidden="true"></i><span>Registry status</span></span></p>
     </div>
   </div>

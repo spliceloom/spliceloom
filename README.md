@@ -208,9 +208,10 @@ capability broker, live data layer and eight official skills. Not yet: package s
 and private registries, hosted skill execution. See the [roadmap](https://docs.spliceloom.com/overview).
 
 > [!IMPORTANT]
-> **Splice has not launched a token.** A contract address will only ever be announced on
-> [spliceloom.com](https://spliceloom.com) and [@spliceloom on X](https://x.com/spliceloom). Any
-> token that claims to be Splice before that announcement is not ours.
+> **Official $SPLICE contract address:** `0xe61717414b34d1f5a1E17F5a91a980A1f4Ef2806`
+>
+> This is the only official contract, announced on [spliceloom.com](https://spliceloom.com) and
+> [@spliceloom on X](https://x.com/spliceloom). Any other token using the Splice name is not ours.
 
 Splice is an independent project. It is not affiliated with, endorsed by or sponsored by Robinhood
 Markets, Inc.; Robinhood Chain is referenced as a public network that Splice reads data from.
