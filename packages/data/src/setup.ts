@@ -71,6 +71,15 @@ export const SETUP_GUIDE: SetupFeature[] = [
     keys: [{ provider: "FRED", env: ["FRED_API_KEY"], url: "https://fredaccount.stlouisfed.org/apikeys", note: "free" }],
   },
   {
+    feature: "Alerts to Discord and Telegram (splice watch / splice radar --notify)",
+    commands: ["splice radar --notify discord", "splice watch <token> --above <price> --notify telegram", "splice watch whales <token> --notify discord,telegram"],
+    withoutKeys: null,
+    keys: [
+      { provider: "Discord", env: ["DISCORD_WEBHOOK_URL"], url: "https://support.discord.com/hc/en-us/articles/228383668", note: "channel settings → Integrations → Webhooks → copy the webhook URL" },
+      { provider: "Telegram", env: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"], together: true, url: "https://core.telegram.org/bots/tutorial", note: "create a bot with @BotFather, send it a message, use your chat id" },
+    ],
+  },
+  {
     feature: "Robinhood Stock Tokens (TSLA, NVDA, SPY…)",
     commands: ["splice stock list", "splice stock quote NVDA", "splice stock gainers"],
     withoutKeys: "the official Robinhood Stock Token API (public; blocked by some ISP DNS filters) and the tokens' DEX markets; the CoinGecko list is the fallback",

@@ -13,6 +13,8 @@ import { stockFinnhubCommand } from "./markets.js";
 
 export interface LiveFlags {
   fresh?: boolean;
+  /** Alert targets for watch / radar: discord, telegram (comma-separated). */
+  notify?: string;
   model?: string;
   provider?: string;
   system?: string;

@@ -20,6 +20,7 @@ import { DefiLlamaProvider } from "./providers/defillama.js";
 import { CodexProvider, type CodexToken } from "./providers/codex.js";
 import { FinnhubProvider, FredProvider, LIGHTER_VENUES, LighterProvider, MACRO_SERIES, type PerpMarket } from "./providers/finance.js";
 import { CANDLE_RESOLUTIONS, ChainlinkCandlestickProvider, ChainlinkStreamsProvider, type Candle, type OracleFeed } from "./providers/chainlink.js";
+import { NOTIFY_HOSTS, Notifier } from "./notify.js";
 import { ProviderError, failure, isLive, unavailable, type DataResult, type ErrorResult } from "./result.js";
 import { ADDRESS, HASH, addressFromWord, formatUnits, hexToBigInt, hexToDecimal, toHexQuantity } from "./units.js";
 
@@ -390,7 +391,11 @@ export class SpliceData {
     this.registry.register(new ExaProvider(http(["api.exa.ai"], 60_000), v.EXA_API_KEY));
     this.registry.register(new FirecrawlProvider(http(["api.firecrawl.dev"], 90_000), v.FIRECRAWL_API_KEY));
     this.router = new ProviderRouter(this.registry);
+    this.notify = new Notifier(v, { discord: http([...NOTIFY_HOSTS.discord]), telegram: http([...NOTIFY_HOSTS.telegram]) });
   }
+
+  /** Alert delivery to Discord / Telegram (credentials from the provider environment). */
+  readonly notify: Notifier;
 
   // ------------------------------------------------------------------------------- helpers
 

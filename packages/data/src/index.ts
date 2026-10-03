@@ -55,5 +55,6 @@ export {
   type WebCallOptions,
 } from "./services.js";
 export { formatUnits, hexToBigInt, hexToDecimal } from "./units.js";
+export { NOTIFY_HOSTS, NOTIFY_TARGETS, Notifier, notifyMissing, parseNotifyTargets, type NotifyResult, type NotifyTarget } from "./notify.js";
 export { SETUP_GUIDE, setupStatus, setupTemplate, type SetupFeature, type SetupKey } from "./setup.js";
 export { PUBLIC_RPC_URL } from "./providers/rpc.js";

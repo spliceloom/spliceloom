@@ -7,11 +7,12 @@
  *   splice watch <token> [...]      live monitor with alerts (price above/below, % change, whale trades)
  *   splice radar                    new tokens as they appear, each with a quick security check
  * Watch loops stop with Ctrl+C (or after --count ticks). Every value comes from a provider result.
+ * `--notify discord,telegram` also delivers each alert to Discord / Telegram (keys in the provider env).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spliceHome } from "@spliceloom/core";
-import { isLive, type CodexToken, type DataResult, type ResearchReport, type SpliceData } from "@spliceloom/data";
+import { isLive, notifyMissing, parseNotifyTargets, type CodexToken, type DataResult, type NotifyTarget, type ResearchReport, type SpliceData } from "@spliceloom/data";
 import { UsageError, type Context } from "../io.js";
 import { age, pct, table, truncate, usdCompact, usdPrice } from "../format.js";
 import { dataFor, emit, need, statusLine } from "./data.js";
@@ -224,11 +225,32 @@ async function loop(ctx: Context, flags: ProFlags, defaultSeconds: number, tick:
 }
 
 const stamp = () => new Date().toISOString().slice(11, 19);
+
+/** `--notify`: validates the targets up front and returns a sender (failures are reported, never fatal). */
+function alerter(ctx: Context, data: SpliceData, flags: ProFlags): ((text: string) => Promise<void>) | undefined {
+  if (flags.notify === undefined) return undefined;
+  let targets: NotifyTarget[];
+  try {
+    targets = parseNotifyTargets(flags.notify);
+  } catch (error) {
+    throw new UsageError(`--notify: ${(error as Error).message}`);
+  }
+  if (targets.length === 0) throw new UsageError("--notify needs a target: discord, telegram");
+  for (const target of targets) {
+    const missing = notifyMissing(data.env.values, target);
+    if (missing) throw new UsageError(`--notify ${target}: ${missing}`, "Add it to .env.local or ~/.splice/.env (see `splice setup`), then run again.");
+  }
+  ctx.err(ctx.style.dim(`alerts are also sent to ${targets.join(" and ")}`));
+  return async (text) => {
+    for (const r of await data.notify.send(text, targets)) if (!r.ok) ctx.err(ctx.style.yellow(`alert to ${r.target} not delivered: ${r.error}`));
+  };
+}
 const bell = (ctx: Context) => ctx.io.stdout("\u0007");
 
 export async function watchCommand(ctx: Context, positionals: string[], flags: ProFlags): Promise<number> {
   const s = ctx.style;
   const data = dataFor(ctx);
+  const notify = alerter(ctx, data, flags);
   const [first, second] = positionals;
   if (!first) throw new UsageError("missing token", "Usage: splice watch <SYMBOL|address> [--above p] [--below p] [--change pct] | splice watch whales <token> [--min usd] [--interval s]");
   if (first === "whales") {
@@ -244,6 +266,7 @@ export async function watchCommand(ctx: Context, positionals: string[], flags: P
       for (const t of fresh) {
         bell(ctx);
         ctx.out(`${stamp()}  ${s.bold("🐋 WHALE")} ${t.type === "Buy" ? s.green("BUY ") : s.red("SELL")} ${usdCompact(t.valueUsd)} @ ${usdPrice(t.priceUsd)}  ${s.dim(t.maker ?? "")}`);
+        await notify?.(`Splice whale alert · ${r.data.symbol ?? q.toUpperCase()} ${t.type === "Buy" ? "BUY" : "SELL"} ${usdCompact(t.valueUsd)} @ ${usdPrice(t.priceUsd)}${t.maker ? ` · ${t.maker}` : ""}${t.txHash ? ` · tx ${t.txHash}` : ""} (Codex)`);
       }
     });
   }
@@ -274,6 +297,7 @@ export async function watchCommand(ctx: Context, positionals: string[], flags: P
     for (const a of alerts) {
       bell(ctx);
       ctx.out(`         ${s.bold(s.yellow("🔔 ALERT"))} ${a}`);
+      await notify?.(`Splice alert · ${t.symbol ?? first.toUpperCase()}: ${a} · price ${usdPrice(t.priceUsd)} · 24h ${t.changePct.h24 !== undefined ? `${t.changePct.h24.toFixed(2)}%` : "n/a"} (Codex)`);
     }
   });
 }
@@ -281,6 +305,7 @@ export async function watchCommand(ctx: Context, positionals: string[], flags: P
 export async function radarCommand(ctx: Context, _positionals: string[], flags: ProFlags): Promise<number> {
   const s = ctx.style;
   const data: SpliceData = dataFor(ctx);
+  const notify = alerter(ctx, data, flags);
   const minLiquidity = numFlag(flags.minLiquidity, "min-liquidity", 0) ?? 5_000;
   const seen = new Set<string>();
   return loop(ctx, flags, 60, async (n) => {
@@ -294,16 +319,20 @@ export async function radarCommand(ctx: Context, _positionals: string[], flags: 
       const sec = await data.security.token(t.address, { fresh: true });
       const rep = isLive(sec) ? (((sec.data as { report?: Record<string, any> }).report ?? {}) as Record<string, any>) : undefined;
       const tags: string[] = [];
+      const plain: string[] = [];
+      const tag = (styled: string, text: string) => (tags.push(styled), plain.push(text));
       if (rep) {
-        if (rep.is_honeypot === "1") tags.push(s.red("HONEYPOT"));
+        if (rep.is_honeypot === "1") tag(s.red("HONEYPOT"), "HONEYPOT");
         const sellTax = Number(rep.sell_tax ?? 0) * 100;
-        if (sellTax >= 10) tags.push(s.red(`sell tax ${sellTax.toFixed(0)}%`));
-        if (rep.is_mintable === "1") tags.push(s.yellow("mintable"));
-        if (rep.hidden_owner === "1") tags.push(s.red("hidden owner"));
-        if (tags.length === 0) tags.push(s.green("no GoPlus flags"));
-      } else tags.push(s.dim("security: n/a"));
+        if (sellTax >= 10) tag(s.red(`sell tax ${sellTax.toFixed(0)}%`), `sell tax ${sellTax.toFixed(0)}%`);
+        if (rep.is_mintable === "1") tag(s.yellow("mintable"), "mintable");
+        if (rep.hidden_owner === "1") tag(s.red("hidden owner"), "hidden owner");
+        if (tags.length === 0) tag(s.green("no GoPlus flags"), "no GoPlus flags");
+      } else tag(s.dim("security: n/a"), "security: n/a");
       if (n > 1) bell(ctx);
       ctx.out(`${stamp()}  ${s.bold("✦ NEW")} ${s.bold(truncate(t.symbol, 12))}  ${usdPrice(t.priceUsd)}  liq ${usdCompact(t.liquidityUsd)}  vol ${usdCompact(t.volumeUsd.h24)}  holders ${t.holders ?? "—"}  age ${age(t.createdAt)}  ${tags.join(" ")}  ${s.dim(t.address)}`);
+      // The first batch is the current state, not news: only tokens that appear later are delivered.
+      if (n > 1) await notify?.(`Splice radar · new token ${truncate(t.symbol, 24)} · ${usdPrice(t.priceUsd)} · liq ${usdCompact(t.liquidityUsd)} · holders ${t.holders ?? "n/a"} · ${plain.join(", ")} (GoPlus) · ${t.address} · not financial advice`);
     }
   });
 }

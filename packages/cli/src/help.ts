@@ -337,17 +337,21 @@ buys/sells, unique buyers, age.`,
 A personal list stored in SPLICE_HOME/watchlist.json: Robinhood Chain tokens (Codex) and perps
 (Lighter).`,
 
-  watch: `Usage: splice watch <SYMBOL|address> [--above <price>] [--below <price>] [--change <pct>] [--interval <s>] [--count <n>]
-       splice watch whales <SYMBOL|address> [--min <usd>] [--interval <s>]
+  watch: `Usage: splice watch <SYMBOL|address> [--above <price>] [--below <price>] [--change <pct>] [--interval <s>] [--count <n>] [--notify <targets>]
+       splice watch whales <SYMBOL|address> [--min <usd>] [--interval <s>] [--notify <targets>]
 
 Live monitor: one line per refresh, an alert (with a terminal bell) when the price crosses
 --above/--below, moves --change % since the start, or a trade ≥ --min USD happens. Default
-interval 60s (whales 30s, minimum 15s); Ctrl+C stops. Each refresh uses provider quota.`,
+interval 60s (whales 30s, minimum 15s); Ctrl+C stops. Each refresh uses provider quota.
 
-  radar: `Usage: splice radar [--min-liquidity <usd>] [--interval <s>] [--count <n>]
+--notify discord,telegram also sends each alert to Discord (DISCORD_WEBHOOK_URL) and/or
+Telegram (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID), read from .env.local or ~/.splice/.env.`,
+
+  radar: `Usage: splice radar [--min-liquidity <usd>] [--interval <s>] [--count <n>] [--notify <targets>]
 
 New Robinhood Chain tokens as they appear (Codex), each with a quick GoPlus security check
-(honeypot, sell tax, mintable, hidden owner). Default: liquidity ≥ $5,000, every 60s.`,
+(honeypot, sell tax, mintable, hidden owner). Default: liquidity ≥ $5,000, every 60s.
+--notify discord,telegram delivers each token that appears after the first refresh.`,
 
   perps: `Usage: splice perps [markets] | top | gainers | losers | oi | spot [--venue robinhood|mainnet] [--search <s>] [--limit <n>]
        splice perps funding [--search <s>]
@@ -455,7 +459,7 @@ Dashboard and research:
   compare <a> <b> …          Tokens side by side
   watchlist [add|remove]     Your tokens and perps with live prices
   watch <token> [--above p]  Live monitor with alerts (also: watch whales <token> --min usd)
-  radar                      New tokens as they appear, each security-checked
+  radar                      New tokens as they appear, each security-checked (--notify discord,telegram)
 
 Ask (AI over live data):
   ask "<question>"           Ask anything: markets, stocks, wallets, chain, web, GitHub (tools + sources)

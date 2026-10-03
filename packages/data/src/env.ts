@@ -46,13 +46,17 @@ export const PROVIDER_ENV = [
   // Developer data
   "GITHUB_TOKEN",
   "GITHUB_API_VERSION",
+  // Alert delivery (splice watch / radar --notify)
+  "DISCORD_WEBHOOK_URL",
+  "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_CHAT_ID",
 ] as const;
 
 export type ProviderEnvName = (typeof PROVIDER_ENV)[number];
 export type ProviderEnv = Partial<Record<ProviderEnvName, string>>;
 
 /** Variables whose values are not secrets (public URLs, routing configuration); all others are redacted. */
-const PUBLIC_VALUES: ReadonlySet<ProviderEnvName> = new Set(["ROBINHOOD_PUBLIC_RPC_URL", "AI_PROVIDER", "AI_DEFAULT_MODEL", "AI_ASK_MODEL", "AI_FALLBACK_PROVIDER", "AI_FALLBACK_MODEL", "GEMINI_DEFAULT_MODEL", "GITHUB_API_VERSION"]);
+const PUBLIC_VALUES: ReadonlySet<ProviderEnvName> = new Set(["ROBINHOOD_PUBLIC_RPC_URL", "AI_PROVIDER", "AI_DEFAULT_MODEL", "AI_ASK_MODEL", "AI_FALLBACK_PROVIDER", "AI_FALLBACK_MODEL", "GEMINI_DEFAULT_MODEL", "GITHUB_API_VERSION", "TELEGRAM_CHAT_ID"]);
 
 /** First `.env.local` or `.env` found walking up from `cwd`. */
 export function findEnvFile(cwd: string): string | null {

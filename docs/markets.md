@@ -57,6 +57,28 @@ splice radar                         # new tokens as they appear, each security-
   refreshes. Every refresh uses provider quota.
 - **`watchlist`** is stored in `SPLICE_HOME/watchlist.json`.
 
+### Alerts to Discord and Telegram
+
+Add `--notify discord`, `--notify telegram` or `--notify discord,telegram` to `watch`, `watch whales`
+or `radar`. Every alert is printed in the terminal and also delivered as a plain-text message:
+
+```sh
+splice radar --notify discord
+splice watch PONS --above 0.5 --notify telegram
+splice watch whales NVDA --min 10000 --notify discord,telegram
+```
+
+| Target | Variables | How to get them |
+| --- | --- | --- |
+| Discord | `DISCORD_WEBHOOK_URL` | Channel settings → Integrations → Webhooks → New webhook → Copy URL |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Create a bot with [@BotFather](https://t.me/BotFather), send it a message, then use your chat id (or `@channel` for a channel the bot posts in) |
+
+Put them in `.env.local` or `~/.splice/.env` like any provider key (`splice setup --init`). They
+are redacted from every error, and requests only go to `discord.com` / `discordapp.com` and
+`api.telegram.org`. A failed delivery is reported in the terminal and never stops the watch.
+`radar` only delivers tokens that appear after its first refresh, so starting it does not flood
+the channel.
+
 ## Global markets (`splice global`)
 
 ```sh

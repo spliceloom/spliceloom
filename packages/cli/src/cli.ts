@@ -55,7 +55,7 @@ function liveFlags(values: Record<string, unknown>): LiveFlags {
     ["model", "model"], ["provider", "provider"], ["system", "system"], ["maxTokens", "max-tokens"], ["temperature", "temperature"], ["search", "search"], ["schema", "schema"],
     ["ref", "ref"], ["page", "page"], ["perPage", "per-page"], ["state", "state"], ["maxBytes", "max-bytes"], ["vs", "vs"], ["timeframe", "timeframe"], ["aggregate", "aggregate"], ["limit", "limit"], ["maxChars", "max-chars"],
     ["session", "session"], ["sort", "sort"], ["window", "window"], ["minLiquidity", "min-liquidity"], ["venue", "venue"],
-    ["above", "above"], ["below", "below"], ["change", "change"], ["interval", "interval"], ["count", "count"], ["min", "min"],
+    ["above", "above"], ["below", "below"], ["change", "change"], ["interval", "interval"], ["count", "count"], ["min", "min"], ["notify", "notify"],
   ];
   for (const [key, opt] of map) {
     const v = s(opt);
@@ -128,6 +128,7 @@ const OPTIONS = {
   below: { type: "string" },
   change: { type: "string" },
   interval: { type: "string" },
+  notify: { type: "string" },
   count: { type: "string" },
   min: { type: "string" },
 } satisfies ParseArgsConfig["options"];
@@ -179,8 +180,8 @@ export const COMMAND_OPTIONS: Record<string, string[]> = {
   report: ["fresh"],
   compare: ["fresh"],
   watchlist: ["fresh"],
-  watch: ["fresh", "above", "below", "change", "interval", "count", "min"],
-  radar: ["fresh", "interval", "count", "min-liquidity"],
+  watch: ["fresh", "above", "below", "change", "interval", "count", "min", "notify"],
+  radar: ["fresh", "interval", "count", "min-liquidity", "notify"],
   global: ["fresh", "limit"],
   dash: ["fresh"],
   perps: ["fresh", "limit", "venue", "sort", "search"],
