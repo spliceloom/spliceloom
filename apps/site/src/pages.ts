@@ -246,7 +246,7 @@ const STEPS: Array<[string, string, string]> = [
 const FEATURED_SKILLS = ["@splice/robinhood", "@splice/onchain", "@splice/market", "@splice/web"];
 
 /** The latest release, shown as a pill on the landing page (keep in step with CHANGELOG.md). */
-export const WHATS_NEW = { label: "New", text: "TypeScript SDK on npm · CLI 0.2.1", path: "docs/changelog" };
+export const WHATS_NEW = { label: "New", text: "Signed packages · live chain page · CLI 0.3.0", path: "docs/changelog" };
 
 /** Demo videos (apps/site/public/video): real CLI recordings, no sound. */
 export const VIDEOS: Record<string, { title: string; caption: string }> = {
@@ -669,7 +669,7 @@ ${header(loc, "home", config)}
         <p class="section-lead">These mechanisms are implemented and covered by tests. What is not guaranteed today is listed next to them.</p>
       </div>
       <div class="sec-grid">
-        <article class="reveal"><h3>Integrity</h3><p>SHA-256 and size are checked against registry metadata before anything is extracted. Published versions are immutable.</p></article>
+        <article class="reveal"><h3>Integrity and signatures</h3><p>SHA-256 and size are checked before anything is extracted; publisher signatures (Ed25519) are verified locally and the signer is pinned in <code>splice.lock</code>. Published versions are immutable.</p></article>
         <article class="reveal"><h3>Explicit permissions</h3><p>File paths, network hosts, environment variables and host capabilities need consent; the grant is pinned in <code>splice.lock</code>.</p></article>
         <article class="reveal"><h3>Sandbox</h3><p>One process per call on the Node.js permission model: no child processes, workers, native addons or <code>eval</code>.</p></article>
         <article class="reveal"><h3>Network guard</h3><p>Declared hosts only. Private, loopback, link-local and metadata addresses are refused at DNS time; redirects are re-checked.</p></article>
@@ -679,7 +679,7 @@ ${header(loc, "home", config)}
       <div class="limits reveal">
         <h3 class="mono">Not guaranteed today</h3>
         <ul>
-          <li>Publisher authenticity — packages are not signed yet; SHA-256 proves integrity, not authorship.</li>
+          <li>Unsigned packages — they still install by default (use <code>--require-signed</code>), and the list of signing keys comes from the registry.</li>
           <li>OS-level isolation — the sandbox is the Node.js permission model plus an in-process network guard, not a VM or container.</li>
           <li>Provider correctness — Splice reports what providers return, with provenance; it does not re-verify third-party data.</li>
         </ul>

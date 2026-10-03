@@ -23,6 +23,13 @@ export async function verifyCommand(ctx: Context, positionals: string[]): Promis
   ctx.out("checks:");
   const label = { passed: s.green("pass"), failed: s.red("FAIL"), skipped: s.dim("skip") } as const;
   for (const check of report.checks) ctx.out(`  [${label[check.status]}] ${check.id.padEnd(10)} ${check.message}`);
-  ctx.out(s.dim("SHA-256 verifies integrity (the bytes are the ones the registry recorded), not who wrote the package."));
+  const signed = report.checks.some((c) => c.id === "signature" && c.status === "passed");
+  ctx.out(
+    s.dim(
+      signed
+        ? "SHA-256 verifies integrity; the signature shows which key registered for the namespace signed these exact bytes."
+        : "SHA-256 verifies integrity (the bytes are the ones the registry recorded), not who wrote the package: this version is unsigned.",
+    ),
+  );
   return report.verified ? 0 : 1;
 }

@@ -74,7 +74,7 @@ export async function verifyPackage(client: RegistryClient, refInput: string, op
   const { bytes } = await client.downloadArtifact(ref.id, version);
   const result = await verifyArtifact({
     bytes,
-    expected: { id: ref.id, version, integrity: info.integrity, size: info.size, manifest: info.manifest },
+    expected: { id: ref.id, version, integrity: info.integrity, size: info.size, manifest: info.manifest, ...(info.signatures ? { signatures: info.signatures } : {}) },
   });
   report.checks.push(...result.checks);
 

@@ -1,6 +1,6 @@
 {
   "name": "@spliceloom/cli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "The splice command line interface.",
   "license": "MIT",
@@ -35,7 +35,7 @@
     "@spliceloom/core": "0.1.0",
     "@spliceloom/mcp": "0.1.0",
     "@spliceloom/data": "0.1.0",
-    "@spliceloom/sdk": "0.1.0",
+    "@spliceloom/sdk": "0.2.0",
     "@spliceloom/runtime": "0.1.0",
     "@spliceloom/spec": "0.1.0"
   },

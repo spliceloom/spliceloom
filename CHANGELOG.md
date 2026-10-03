@@ -3,6 +3,34 @@
 Notable changes to the `splice` CLI (`@spliceloom/cli`) and the public registry. Official skills
 are versioned independently in the registry; their versions are listed per release.
 
+## 0.3.0 — 2026-10-04
+
+**Package signing**
+- Publishers sign versions with Ed25519 keys registered for their namespace: `splice keys
+  generate | list | register | revoke`, `splice publish --sign`, `splice sign <pkg@version> [--dir]`.
+- Every install verifies signatures locally and refuses a signature that does not match the
+  artifact. `--require-signed` refuses unsigned versions; the signer is pinned in `splice.lock`
+  (`signedBy`) and a different signer is refused unless `--allow-signer-change`.
+- `splice info` and `splice verify` show the signature status. All official `@splice` skills are
+  signed with `ed25519:b44a06b812345ce6`. See [docs/signing.md](docs/signing.md).
+
+**Alerts**
+- `splice watch`, `splice watch whales` and `splice radar` take `--notify discord,telegram` and
+  deliver each alert to a Discord webhook and/or a Telegram bot (`DISCORD_WEBHOOK_URL`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
+
+**Framework adapters**
+- New package [`@spliceloom/adapters`](docs/adapters.md) 0.1.0: Splice tools for OpenAI (Chat
+  Completions and Responses), the OpenAI Agents SDK, LangChain and the Vercel AI SDK.
+
+**Website**
+- [spliceloom.com/live](https://spliceloom.com/live) (Robinhood Chain right now),
+  [/ask](https://spliceloom.com/ask) (the agent in the browser) and
+  [/token](https://spliceloom.com/token) ($SPLICE read live from the chain), served by a public API
+  at `api.spliceloom.com`.
+
+SDK: `@spliceloom/sdk` 0.2.0 (`requireSigned`, `allowSignerChange`, `signedBy` on install results).
+
 ## 0.2.1 — 2026-10-03
 
 - Fix (Windows): tools could report `PATH_OUTSIDE_SANDBOX` for paths inside their sandbox when the
