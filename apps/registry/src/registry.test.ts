@@ -5,10 +5,17 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { packDirectory, type PackResult } from "@spliceloom/core";
 import {
+  checkSignatures,
   computeIntegrity,
+  encodeBase64,
   encodeBundle,
   encodeTarGz,
+  keyIdOf,
+  signaturePayload,
   type CreatedTokenResponse,
+  type PackageSignature,
+  type SigningKeyInfo,
+  type SigningKeysResponse,
   type ProvenanceResponse,
   type NamespaceResponse,
   type PackageResponse,
@@ -447,6 +454,74 @@ describe("registry", () => {
     it("revokes publishing when a maintainer is removed", async () => {
       assert.deepEqual((await api<NamespaceResponse>("DELETE", "/namespaces/alice/maintainers/bob", { token: alice })).body.maintainers, []);
       assert.equal((await publish((await pack("alice", "team", "1.0.1")).bytes, bob)).status, 403);
+    });
+  });
+
+  describe("signing keys and signatures", () => {
+    let publicKey: string;
+    let keyId: string;
+    let signFor: (version: string, integrity: string) => Promise<string>;
+    let signed: PackResult;
+
+    before(async () => {
+      const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as unknown as { publicKey: import("node:crypto").webcrypto.CryptoKey; privateKey: import("node:crypto").webcrypto.CryptoKey };
+      publicKey = encodeBase64(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)));
+      keyId = await keyIdOf(publicKey);
+      signFor = async (version, integrity) =>
+        encodeBase64(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, pair.privateKey, new TextEncoder().encode(signaturePayload("@alice/signed", version, integrity)))));
+      signed = await pack("alice", "signed", "1.0.0");
+      assert.equal((await publish(signed.bytes, alice)).status, 201);
+    });
+
+    it("lets only the namespace owner register keys, and lists them publicly", async () => {
+      assert.equal((await api("POST", "/namespaces/alice/keys", { json: { publicKey } })).status, 401);
+      assert.equal((await api("POST", "/namespaces/alice/keys", { token: bob, json: { publicKey } })).status, 403);
+      assert.equal((await api("POST", "/namespaces/alice/keys", { token: alice, json: { publicKey: "not-a-key" } })).status, 400);
+      const added = await api<SigningKeyInfo>("POST", "/namespaces/alice/keys", { token: alice, json: { publicKey } });
+      assert.equal(added.status, 201);
+      assert.equal(added.body.keyId, keyId);
+      assert.equal(added.body.addedBy, "alice");
+      const listed = await api<SigningKeysResponse>("GET", "/namespaces/alice/keys");
+      assert.deepEqual(listed.body.keys.map((k) => k.keyId), [keyId]);
+      assert.equal(listed.headers.get("access-control-allow-origin"), "*");
+    });
+
+    it("accepts only signatures that verify over the version's integrity with a registered key", async () => {
+      const path = "/packages/alice/signed/1.0.0/signatures";
+      const good = await signFor("1.0.0", signed.integrity);
+      assert.equal((await api("POST", path, { json: { keyId, signature: good } })).status, 401);
+      assert.equal((await api("POST", path, { token: bob, json: { keyId, signature: good } })).status, 403);
+      const wrongBytes = await signFor("1.0.0", `sha256-${"0".repeat(64)}`);
+      assert.equal((await api("POST", path, { token: alice, json: { keyId, signature: wrongBytes } })).status, 422);
+      assert.equal((await api("POST", path, { token: alice, json: { keyId: "ed25519:0000000000000000", signature: good } })).status, 403);
+      const created = await api<PackageSignature>("POST", path, { token: alice, json: { keyId, signature: good } });
+      assert.equal(created.status, 201);
+      assert.equal(created.body.publicKey, publicKey);
+      // Idempotent: the same signature again changes nothing.
+      assert.equal((await api("POST", path, { token: alice, json: { keyId, signature: good } })).status, 201);
+      const version = (await api<VersionResponse>("GET", "/packages/alice/signed/1.0.0")).body;
+      assert.equal(version.signatures?.length, 1);
+      assert.deepEqual(await checkSignatures("@alice/signed", "1.0.0", version.integrity, version.signatures), { status: "verified", keyId });
+    });
+
+    it("revokes keys: they stay listed, cannot sign, and clients stop trusting their signatures", async () => {
+      assert.equal((await api("DELETE", `/namespaces/alice/keys/${encodeURIComponent(keyId)}`, { token: bob })).status, 403);
+      const revoked = await api<SigningKeyInfo>("DELETE", `/namespaces/alice/keys/${encodeURIComponent(keyId)}`, { token: alice });
+      assert.equal(revoked.status, 200);
+      assert.ok(revoked.body.revokedAt);
+      const version = (await api<VersionResponse>("GET", "/packages/alice/signed/1.0.0")).body;
+      assert.ok(version.signatures?.[0]?.revokedAt);
+      assert.deepEqual(await checkSignatures("@alice/signed", "1.0.0", version.integrity, version.signatures), { status: "unsigned" });
+      const again = await pack("alice", "signed", "1.0.1");
+      assert.equal((await publish(again.bytes, alice)).status, 201);
+      const late = await api("POST", "/packages/alice/signed/1.0.1/signatures", { token: alice, json: { keyId, signature: await signFor("1.0.1", again.integrity) } });
+      assert.equal(late.status, 403);
+      assert.equal((await api("POST", "/namespaces/alice/keys", { token: alice, json: { publicKey } })).status, 409);
+    });
+
+    it("never lets the database change or delete keys and signatures", async () => {
+      await assert.rejects(db.run("UPDATE signing_keys SET public_key = 'x' WHERE key_id = ?", [keyId]), /immutable/);
+      await assert.rejects(db.run("DELETE FROM signatures WHERE key_id = ?", [keyId]), /cannot be deleted/);
     });
   });
 

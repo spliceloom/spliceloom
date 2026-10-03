@@ -140,17 +140,18 @@ export function d1Database(db: D1DatabaseLike, usage?: D1Usage): SqlDatabase {
 /**
  * Edge cache for anonymous, read-only registry data (Cloudflare Cache API, per data center).
  * Lists and package metadata change on publish: 60 s (purged right away in the data center that
- * handled the publish). Published versions and their provenance are immutable: 1 day. Artifact
+ * handled the publish). Provenance is immutable: 1 day. Version metadata carries signatures, which can
+ * be added later and whose keys can be revoked: 5 minutes. Artifact
  * downloads are not cached: the bytes come from storage and clients verify them, so a tampered
  * storage copy must stay detectable. Health, authenticated routes and errors are never cached.
  */
 export function edgeCacheTtl(pathname: string): number | null {
   const segments = pathname.split("/").filter(Boolean);
-  if (segments[0] === "namespaces" && segments.length === 2) return 60;
+  if (segments[0] === "namespaces" && (segments.length === 2 || (segments.length === 3 && segments[2] === "keys"))) return 60;
   if (segments[0] !== "packages") return null;
   if (segments[1] === "search" && segments.length === 2) return 60;
   if (segments.length === 3) return 60; // package
-  if (segments.length === 4) return segments[3] === "versions" ? 60 : 86_400; // version list | version metadata
+  if (segments.length === 4) return segments[3] === "versions" ? 60 : 300; // version list | version metadata (signatures)
   if (segments.length === 5 && segments[4] === "provenance") return 86_400;
   return null;
 }
@@ -165,6 +166,8 @@ export async function stalePaths(request: Request, response: Response): Promise<
     return m ? [`/packages/${m[1]}/${m[2]}`, `/packages/${m[1]}/${m[2]}/versions`, ...namespacePaths(m[1]!)] : [];
   }
   if (segments[0] === "namespaces" && segments[2] === "maintainers" && segments[1]) return namespacePaths(segments[1]);
+  if (segments[0] === "namespaces" && segments[2] === "keys" && segments[1]) return [`/namespaces/${segments[1]}/keys`];
+  if (segments[0] === "packages" && segments[4] === "signatures" && segments.length === 5) return [`/packages/${segments[1]}/${segments[2]}/${segments[3]}`];
   if (segments[0] === "admin" && segments[1] === "namespaces" && segments[2]) return namespacePaths(segments[2]);
   return [];
 }

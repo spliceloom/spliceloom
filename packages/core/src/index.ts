@@ -18,6 +18,7 @@ export {
   type UserConfig,
 } from "./user-config.js";
 export { RegistryClient, type FetchLike } from "./registry-client.js";
+export { generateSigningKey, keysDir, listSigningKeys, loadSigningKey, signPackage, signPublishedVersion, type SigningKey } from "./signing-keys.js";
 export {
   addPackage,
   installProject,

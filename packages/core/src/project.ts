@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { INTEGRITY_PATTERN, isValidRange, isValidVersion, normalizePermissions, parsePackageId, type Permissions } from "@spliceloom/spec";
+import { INTEGRITY_PATTERN, KEY_ID_PATTERN, isValidRange, isValidVersion, normalizePermissions, parsePackageId, type Permissions } from "@spliceloom/spec";
 import { CoreError } from "./errors.js";
 import { expandRegistry, resolveRegistry } from "./user-config.js";
 
@@ -43,6 +43,11 @@ export interface LockEntry {
    * package whose manifest requests more. Absent in older lockfiles (treated as granted then).
    */
   permissions?: Permissions;
+  /**
+   * Key id of the verified publisher signature at install (Phase 9). A later version or reinstall
+   * signed by a different key (or unsigned) is refused unless explicitly allowed.
+   */
+  signedBy?: string;
 }
 
 /** `splice.lock`: exactly what is installed, so another machine can install the same bytes. */
@@ -142,13 +147,15 @@ function parseLock(text: string, file: string): Lockfile {
       typeof e.resolved !== "string" ||
       (e.registry !== undefined && typeof e.registry !== "string") ||
       (e.size !== undefined && (!Number.isSafeInteger(e.size) || e.size < 0)) ||
-      (e.files !== undefined && (typeof e.files !== "string" || !INTEGRITY_PATTERN.test(e.files)))
+      (e.files !== undefined && (typeof e.files !== "string" || !INTEGRITY_PATTERN.test(e.files))) ||
+      (e.signedBy !== undefined && (typeof e.signedBy !== "string" || !KEY_ID_PATTERN.test(e.signedBy)))
     ) {
       throw invalid(file, `malformed entry for ${id}`);
     }
     const parsed: LockEntry = { version: e.version, integrity: e.integrity, registry: e.registry ?? registryOf(e.resolved), resolved: e.resolved };
     if (e.size !== undefined) parsed.size = e.size;
     if (e.files !== undefined) parsed.files = e.files;
+    if (e.signedBy !== undefined) parsed.signedBy = e.signedBy;
     if (e.permissions !== undefined) {
       const errors: string[] = [];
       parsed.permissions = normalizePermissions(e.permissions, errors, `${id}.permissions`);
@@ -167,6 +174,7 @@ function serializeEntry(entry: LockEntry): Record<string, unknown> {
   out.registry = entry.registry ?? registryOf(entry.resolved);
   out.resolved = entry.resolved;
   if (entry.permissions !== undefined) out.permissions = entry.permissions;
+  if (entry.signedBy !== undefined) out.signedBy = entry.signedBy;
   return out;
 }
 

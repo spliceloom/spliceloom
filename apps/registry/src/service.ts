@@ -17,7 +17,15 @@ import {
   redactSecrets,
   validateBundleFiles,
   canonicalJson,
+  KEY_ID_PATTERN,
+  PUBLIC_KEY_PATTERN,
+  SIGNATURE_PATTERN,
+  keyIdOf,
+  verifyPackageSignature,
   type CreatedTokenResponse,
+  type PackageSignature,
+  type SigningKeyInfo,
+  type SigningKeysResponse,
   type HealthResponse,
   type Manifest,
   type ProvenanceRecord,
@@ -50,7 +58,24 @@ export type RegistryErrorCode =
   | "RATE_LIMITED"
   | "ARTIFACT_STORAGE_FAILED"
   | "METADATA_WRITE_FAILED"
-  | "DEPENDENCIES_UNSUPPORTED";
+  | "DEPENDENCIES_UNSUPPORTED"
+  | "KEY_EXISTS"
+  | "KEY_REVOKED"
+  | "KEY_NOT_REGISTERED"
+  | "INVALID_SIGNATURE";
+
+interface SigningKeyRow {
+  key_id: string;
+  namespace: string;
+  public_key: string;
+  added_by: string;
+  added_at: string;
+  revoked_at: string | null;
+}
+
+function toKeyInfo(row: SigningKeyRow & { added_by_name: string | null }): SigningKeyInfo {
+  return { keyId: row.key_id, publicKey: row.public_key, namespace: row.namespace, addedBy: row.added_by_name ?? "unknown", addedAt: row.added_at, revokedAt: row.revoked_at };
+}
 
 export class RegistryError extends Error {
   readonly code: RegistryErrorCode;
@@ -322,6 +347,7 @@ export class RegistryService {
       download: downloadPath(row.package_id, row.version),
       artifact: { filename: artifactFilename(row), backend: row.artifact_backend, url: row.artifact_url },
       provenance: this.provenanceOf(row, publisher?.name),
+      signatures: await this.signaturesOf(row.package_id, row.version),
     };
   }
 
@@ -518,11 +544,11 @@ export class RegistryService {
     };
   }
 
-  private async requireOwner(user: AuthUser, namespace: string): Promise<void> {
+  private async requireOwner(user: AuthUser, namespace: string, action = "manage its maintainers"): Promise<void> {
     this.requireManage(user);
     const row = await this.db.first<NamespaceRow>("SELECT * FROM namespaces WHERE name = ?", [namespace]);
     if (!row) throw new RegistryError("NOT_FOUND", 404, `Namespace @${namespace} not found`);
-    if (row.owner_id !== user.id) throw new RegistryError("FORBIDDEN", 403, `Only the owner of @${namespace} can manage its maintainers`);
+    if (row.owner_id !== user.id) throw new RegistryError("FORBIDDEN", 403, `Only the owner of @${namespace} can ${action}`);
   }
 
   async addMaintainer(user: AuthUser, namespace: string, maintainerName: string): Promise<NamespaceResponse> {
@@ -547,6 +573,93 @@ export class RegistryService {
       await this.db.run("DELETE FROM namespace_maintainers WHERE namespace = ? AND user_id = ?", [namespace, maintainer.id]);
     }
     return this.getNamespace(namespace);
+  }
+
+  // ---------------------------------------------------------------- signing keys and signatures
+
+  async listKeys(namespace: string): Promise<SigningKeysResponse> {
+    assertName(namespace, "namespace");
+    const ns = await this.db.first<{ name: string }>("SELECT name FROM namespaces WHERE name = ?", [namespace]);
+    if (!ns) throw new RegistryError("NOT_FOUND", 404, `Namespace @${namespace} not found`);
+    const rows = await this.db.all<SigningKeyRow & { added_by_name: string | null }>(
+      "SELECT k.*, u.name AS added_by_name FROM signing_keys k LEFT JOIN users u ON u.id = k.added_by WHERE k.namespace = ? ORDER BY k.added_at, k.key_id",
+      [namespace],
+    );
+    return { namespace, keys: rows.map(toKeyInfo) };
+  }
+
+  /** Owner (managing token): registers an Ed25519 public key for the namespace. */
+  async addKey(user: AuthUser, namespace: string, publicKey: string): Promise<SigningKeyInfo> {
+    assertName(namespace, "namespace");
+    await this.requireOwner(user, namespace, "register signing keys");
+    if (!PUBLIC_KEY_PATTERN.test(publicKey)) throw new RegistryError("BAD_REQUEST", 400, '"publicKey" must be a raw 32-byte Ed25519 public key, base64');
+    const keyId = await keyIdOf(publicKey);
+    const existing = await this.db.first<SigningKeyRow>("SELECT * FROM signing_keys WHERE key_id = ?", [keyId]);
+    if (existing) {
+      if (existing.namespace !== namespace) throw new RegistryError("KEY_EXISTS", 409, `Key ${keyId} is registered for another namespace`);
+      if (existing.revoked_at) throw new RegistryError("KEY_REVOKED", 409, `Key ${keyId} was revoked and cannot be registered again; generate a new key`);
+    } else {
+      await this.db.run("INSERT INTO signing_keys (key_id, namespace, public_key, added_by, added_at) VALUES (?, ?, ?, ?, ?)", [keyId, namespace, publicKey, user.id, this.now().toISOString()]);
+    }
+    return (await this.listKeys(namespace)).keys.find((k) => k.keyId === keyId)!;
+  }
+
+  /** Owner (managing token): revokes a key. Signatures made with it are no longer trusted by clients. */
+  async revokeKey(user: AuthUser, namespace: string, keyId: string): Promise<SigningKeyInfo> {
+    assertName(namespace, "namespace");
+    await this.requireOwner(user, namespace, "revoke signing keys");
+    const row = await this.db.first<SigningKeyRow>("SELECT * FROM signing_keys WHERE key_id = ? AND namespace = ?", [keyId, namespace]);
+    if (!row) throw new RegistryError("NOT_FOUND", 404, `Key ${keyId} is not registered for @${namespace}`);
+    if (!row.revoked_at) await this.db.run("UPDATE signing_keys SET revoked_at = ? WHERE key_id = ?", [this.now().toISOString(), keyId]);
+    return (await this.listKeys(namespace)).keys.find((k) => k.keyId === keyId)!;
+  }
+
+  /**
+   * A publisher of the namespace attaches a signature to a published version. The signature must
+   * verify against a non-revoked key registered for that namespace, over this version's integrity.
+   */
+  async addSignature(user: AuthUser, idInput: string, version: string, input: { keyId: string; signature: string }): Promise<PackageSignature> {
+    const row = await this.versionRow(idInput, version);
+    const { namespace } = parsePackageId(row.package_id);
+    await this.requirePublisher(user, namespace);
+    if (!KEY_ID_PATTERN.test(input.keyId)) throw new RegistryError("BAD_REQUEST", 400, '"keyId" must look like ed25519:<16 hex>');
+    if (!SIGNATURE_PATTERN.test(input.signature)) throw new RegistryError("BAD_REQUEST", 400, '"signature" must be a 64-byte Ed25519 signature, base64');
+    const key = await this.db.first<SigningKeyRow>("SELECT * FROM signing_keys WHERE key_id = ?", [input.keyId]);
+    if (!key || key.namespace !== namespace) throw new RegistryError("KEY_NOT_REGISTERED", 403, `Key ${input.keyId} is not registered for @${namespace}. Run \`splice keys register @${namespace}\`.`);
+    if (key.revoked_at) throw new RegistryError("KEY_REVOKED", 403, `Key ${input.keyId} was revoked`);
+    const valid = await verifyPackageSignature({ id: row.package_id, version: row.version, integrity: row.integrity, publicKey: key.public_key, signature: input.signature });
+    if (!valid) throw new RegistryError("INVALID_SIGNATURE", 422, `The signature does not verify for ${row.package_id}@${row.version} (${row.integrity}) with key ${input.keyId}`);
+    await this.db.run("INSERT OR IGNORE INTO signatures (package_id, version, key_id, signature, signed_by, signed_at) VALUES (?, ?, ?, ?, ?, ?)", [
+      row.package_id,
+      row.version,
+      input.keyId,
+      input.signature,
+      user.id,
+      this.now().toISOString(),
+    ]);
+    const stored = (await this.signaturesOf(row.package_id, row.version)).find((s) => s.keyId === input.keyId)!;
+    return stored;
+  }
+
+  private async signaturesOf(packageId: string, version: string): Promise<PackageSignature[]> {
+    const rows = await this.db.all<{ key_id: string; signature: string; signed_at: string; public_key: string; revoked_at: string | null }>(
+      `SELECT s.key_id, s.signature, s.signed_at, k.public_key, k.revoked_at
+       FROM signatures s JOIN signing_keys k ON k.key_id = s.key_id
+       WHERE s.package_id = ? AND s.version = ? ORDER BY s.signed_at, s.key_id`,
+      [packageId, version],
+    );
+    return rows.map((r) => ({ keyId: r.key_id, publicKey: r.public_key, signature: r.signature, signedAt: r.signed_at, revokedAt: r.revoked_at }));
+  }
+
+  /** Owner or maintainer of an existing namespace, within the token's scope (never claims a namespace). */
+  private async requirePublisher(user: AuthUser, namespace: string): Promise<void> {
+    if (user.token?.namespaces && !user.token.namespaces.includes(namespace)) {
+      throw new RegistryError("TOKEN_SCOPE", 403, `This token may only act on: ${user.token.namespaces.map((n) => `@${n}`).join(", ")}`);
+    }
+    const row = await this.db.first<NamespaceRow>("SELECT * FROM namespaces WHERE name = ?", [namespace]);
+    if (row?.owner_id === user.id) return;
+    if (await this.db.first("SELECT 1 AS x FROM namespace_maintainers WHERE namespace = ? AND user_id = ?", [namespace, user.id])) return;
+    throw new RegistryError("FORBIDDEN", 403, `You do not publish to @${namespace}`);
   }
 
   // ---------------------------------------------------------------- admin

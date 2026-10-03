@@ -16,7 +16,7 @@ Examples:
   splice info @splice/example
   splice info @splice/example@0.1.0`,
 
-  add: `Usage: splice add <package>[@range] [...more] [--accept-permissions] [--json]
+  add: `Usage: splice add <package>[@range] [...more] [--accept-permissions] [--require-signed] [--allow-signer-change] [--json]
 
 Resolve, download, verify and install packages into the current project.
 Ranges: 1.2.3, ^1.2.3, ~1.2.3, * or latest (default).
@@ -27,12 +27,15 @@ Every artifact is verified (SHA-256, size, package validity, registry metadata) 
 is written; there is no way to skip verification. Packages that request permissions (files,
 network, environment) are refused unless you pass --accept-permissions after reviewing them
 (see splice info). Version, SHA-256, registry and granted permissions are recorded in splice.lock.
+Publisher signatures are checked locally: a signature that does not verify stops the install;
+--require-signed also refuses unsigned versions. The signing key is recorded in splice.lock, and a
+later version signed by a different key (or unsigned) is refused unless --allow-signer-change.
 
 Examples:
   splice add @splice/example
   splice add @splice/example@^0.1.0`,
 
-  install: `Usage: splice install [--accept-permissions] [--json]
+  install: `Usage: splice install [--accept-permissions] [--require-signed] [--allow-signer-change] [--json]
 
 Install the project exactly as recorded in splice.lock (e.g. after cloning): every locked
 package at its locked version, verified against the locked SHA-256. If the registry serves a
@@ -50,7 +53,7 @@ Compare installed (locked) versions with the registry.
   Latest   newest stable version, regardless of the range
 Read-only. Exit code 0 whether or not updates exist.`,
 
-  update: `Usage: splice update [package ...] [--accept-permissions] [--json]
+  update: `Usage: splice update [package ...] [--accept-permissions] [--require-signed] [--allow-signer-change] [--json]
 
 Update packages (default: all in splice.json) to the newest version allowed by their range in
 splice.json. The range itself is not changed; to move beyond it use splice add <pkg>@<range>.
@@ -85,14 +88,17 @@ Examples:
   splice run example.hello --input '{"name":"Dim","excited":true}'
   splice run @splice/example.stats text="hello world" --json`,
 
-  publish: `Usage: splice publish [directory] [--dry-run] [--json]
+  publish: `Usage: splice publish [directory] [--dry-run] [--sign [--key <name>]] [--json]
 
 Validate a skill directory (default: current directory), pack it and publish it to the
 registry. Requires \`splice login\` (or SPLICE_TOKEN). Published versions are immutable.
 The first publish to an unowned namespace claims it for you; @splice is reserved.
+--sign signs the new version with a local key (splice keys) over the integrity of the package
+that was just packed, so the signature covers exactly the uploaded bytes.
 
 Examples:
   splice publish --dry-run
+  splice publish --sign
   splice publish ./skills/my-skill --registry local`,
 
   login: `Usage: splice login [--token <token>]
@@ -132,6 +138,22 @@ printed once on stdout, e.g. for CI:
 
 Show a namespace's owner, maintainers and packages. Owners can let other users publish into
 their namespace by adding them as maintainers.`,
+
+  keys: `Usage: splice keys generate [name]
+       splice keys list [@<namespace>]
+       splice keys register @<namespace> [--key <name>]
+       splice keys revoke @<namespace> <keyId>
+
+Ed25519 signing keys for publishers. generate creates a key in ~/.splice/keys/<name>.key (default
+name "default"; never overwrites). register adds its public key to a namespace you own; revoke
+marks a key revoked, after which clients no longer trust its signatures. list without a namespace
+shows local keys; with one, the keys registered for it.`,
+
+  sign: `Usage: splice sign <@namespace/name@version> [--key <name>] [--dir <path>]
+
+Sign a published version with a local key and upload the signature. With --dir, the directory is
+packed locally and the registry must report the same SHA-256; without it the artifact is
+downloaded and verified first. Use splice publish --sign to sign new versions as you publish.`,
 
   chain: `Usage: splice chain list [--json]
        splice chain info [chain] [--json]
@@ -446,7 +468,8 @@ Commands:
   remove <package>           Uninstall a package
   list                       List installed packages
   run <pkg>.<tool> [args]    Run an installed tool
-  publish [dir]              Validate, pack and publish a skill
+  publish [dir]              Validate, pack and publish a skill (--sign to sign it)
+  keys / sign                Publisher signing keys; sign a published version
   login | logout | whoami    Manage your registry token
   config                     Show or change the registry URL
   token                      Create, list and revoke your registry tokens

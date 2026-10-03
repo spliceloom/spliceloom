@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  KEY_ID_PATTERN,
   computeIntegrity,
+  defaultVerifiers,
   describePermissions,
+  encodeBase64,
   encodeTarGz,
   hostAllowed,
   isEmptyPermissions,
+  keyIdOf,
   normalizePermissions,
   redactSecrets,
+  signaturePayload,
   ungrantedPermissions,
   validateBundleFiles,
   validateManifest,
@@ -105,14 +110,41 @@ describe("verification pipeline", () => {
     assert.equal(otherVersion.verified, false);
   });
 
-  it("fails closed on signatures it cannot verify (signing-ready)", async () => {
+  it("verifies Ed25519 publisher signatures over the exact artifact and fails closed on bad ones", async () => {
     const { bytes, integrity } = await artifact();
-    const result = await verifyArtifact({
-      bytes,
-      expected: { id: "@splice/trusted", version: "1.0.0", integrity, signatures: [{ algorithm: "ed25519", keyId: "k1", value: "AAAA" }] },
-    });
-    assert.equal(result.verified, false);
-    assert.match(result.checks.find((c) => c.id === "signature")!.message, /unsupported signature algorithm/);
+    const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as unknown as { publicKey: import("node:crypto").webcrypto.CryptoKey; privateKey: import("node:crypto").webcrypto.CryptoKey };
+    const publicKey = encodeBase64(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)));
+    const keyId = await keyIdOf(publicKey);
+    const sign = async (payload: string) => encodeBase64(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, pair.privateKey, new TextEncoder().encode(payload))));
+    const good = { keyId, publicKey, signature: await sign(signaturePayload("@splice/trusted", "1.0.0", integrity)), signedAt: "2026-10-03T00:00:00Z", revokedAt: null };
+    const expected = { id: "@splice/trusted", version: "1.0.0", integrity };
+
+    const signed = await verifyArtifact({ bytes, expected: { ...expected, signatures: [good] } });
+    assert.equal(signed.verified, true);
+    assert.equal(signed.signedBy, keyId);
+    assert.match(keyId, KEY_ID_PATTERN);
+
+    // A signature for other bytes (or another version) does not transfer.
+    const otherBytes = { ...good, signature: await sign(signaturePayload("@splice/trusted", "1.0.0", `sha256-${"0".repeat(64)}`)) };
+    assert.equal((await verifyArtifact({ bytes, expected: { ...expected, signatures: [otherBytes] } })).verified, false);
+    const otherVersion = { ...good, signature: await sign(signaturePayload("@splice/trusted", "1.0.1", integrity)) };
+    assert.equal((await verifyArtifact({ bytes, expected: { ...expected, signatures: [otherVersion] } })).verified, false);
+    // A key id that does not belong to the key is rejected.
+    const wrongId = await verifyArtifact({ bytes, expected: { ...expected, signatures: [{ ...good, keyId: "ed25519:0000000000000000" }] } });
+    assert.match(wrongId.checks.find((c) => c.id === "signature")!.message, /key id does not match/);
+    // Revoked keys are ignored: the version counts as unsigned.
+    const revoked = await verifyArtifact({ bytes, expected: { ...expected, signatures: [{ ...good, revokedAt: "2026-10-04T00:00:00Z" }] } });
+    assert.equal(revoked.verified, true);
+    assert.equal(revoked.signedBy, undefined);
+  });
+
+  it("requires a signature only when asked to", async () => {
+    const { bytes, integrity } = await artifact();
+    const expected = { id: "@splice/trusted", version: "1.0.0", integrity };
+    assert.equal((await verifyArtifact({ bytes, expected })).checks.find((c) => c.id === "signature")!.status, "skipped");
+    const required = await verifyArtifact({ bytes, expected }, defaultVerifiers({ requireSigned: true }));
+    assert.equal(required.verified, false);
+    assert.match(required.checks.find((c) => c.id === "signature")!.message, /signatures are required/);
   });
 
   it("accepts custom verifiers (e.g. a future SignatureVerifier)", async () => {

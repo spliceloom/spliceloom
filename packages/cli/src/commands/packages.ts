@@ -3,9 +3,16 @@ import { describePermissions, parsePackageId, parsePackageRef } from "@spliceloo
 import { UsageError, type Context } from "../io.js";
 import { printJson, shortName, spliceFor } from "./shared.js";
 
-function installOptions(ctx: Context, acceptPermissions: boolean): AddOptions {
+export interface SigningFlags {
+  requireSigned?: boolean;
+  allowSignerChange?: boolean;
+}
+
+function installOptions(ctx: Context, acceptPermissions: boolean, signing: SigningFlags = {}): AddOptions {
   return {
     acceptPermissions,
+    ...(signing.requireSigned ? { requireSigned: true } : {}),
+    ...(signing.allowSignerChange ? { allowSignerChange: true } : {}),
     onStep: (step, detail) => {
       if (ctx.json) return;
       const label = { resolving: "Resolving", downloading: "Downloading", verifying: "Verifying", installing: "Installing" }[step];
@@ -23,6 +30,7 @@ function printInstalled(ctx: Context, result: AddResult): void {
   const change = result.previousVersion ? ` (was ${result.previousVersion})` : "";
   ctx.out(`${s.green("Installed")} ${s.bold(`${result.id}@${result.version}`)}${change}`);
   if (result.offline) ctx.out(s.yellow(`  offline: installed from the local cache, verified against splice.lock (${result.integrity})`));
+  ctx.out(`  signature: ${result.signedBy ? s.green(`verified, signed by ${result.signedBy}`) : s.dim("unsigned (SHA-256 verified)")}`);
   ctx.out(`  permissions: ${describePermissions(result.manifest.permissions).join("; ")}`);
   ctx.out(`  tools: ${result.manifest.tools.map((t) => `${shortName(result.id)}.${t.name}`).join(", ")}`);
 }
@@ -36,12 +44,13 @@ function installedJson(results: AddResult[]): unknown {
     previousVersion: r.previousVersion ?? null,
     fromCache: r.fromCache === true,
     offline: r.offline === true,
+    signedBy: r.signedBy ?? null,
     permissions: r.manifest.permissions,
     tools: r.manifest.tools.map((t) => t.name),
   }));
 }
 
-export async function addCommand(ctx: Context, positionals: string[], acceptPermissions = false): Promise<number> {
+export async function addCommand(ctx: Context, positionals: string[], acceptPermissions = false, signing: SigningFlags = {}): Promise<number> {
   if (positionals.length === 0) {
     throw new UsageError("add requires a package", "Example: splice add @splice/example (to install everything in splice.lock: splice install)");
   }
@@ -50,7 +59,7 @@ export async function addCommand(ctx: Context, positionals: string[], acceptPerm
   const results: AddResult[] = [];
 
   for (const ref of positionals) {
-    const result = await splice.add(ref, installOptions(ctx, acceptPermissions));
+    const result = await splice.add(ref, installOptions(ctx, acceptPermissions, signing));
     results.push(result);
     if (!ctx.json) printInstalled(ctx, result);
   }
@@ -59,11 +68,11 @@ export async function addCommand(ctx: Context, positionals: string[], acceptPerm
   return 0;
 }
 
-export async function installCommand(ctx: Context, positionals: string[], acceptPermissions = false): Promise<number> {
+export async function installCommand(ctx: Context, positionals: string[], acceptPermissions = false, signing: SigningFlags = {}): Promise<number> {
   if (positionals.length > 0) {
     throw new UsageError("install takes no packages", `To add a package: splice add ${positionals[0]}`);
   }
-  const results = await spliceFor(ctx).install(installOptions(ctx, acceptPermissions));
+  const results = await spliceFor(ctx).install(installOptions(ctx, acceptPermissions, signing));
   if (ctx.json) {
     printJson(ctx, installedJson(results));
     return 0;
@@ -113,9 +122,9 @@ export async function outdatedCommand(ctx: Context, positionals: string[]): Prom
   return 0;
 }
 
-export async function updateCommand(ctx: Context, positionals: string[], acceptPermissions = false): Promise<number> {
+export async function updateCommand(ctx: Context, positionals: string[], acceptPermissions = false, signing: SigningFlags = {}): Promise<number> {
   positionals.forEach((id) => parsePackageId(id));
-  const results = await spliceFor(ctx).update(positionals, installOptions(ctx, acceptPermissions));
+  const results = await spliceFor(ctx).update(positionals, installOptions(ctx, acceptPermissions, signing));
   const noMatch = results.filter((r) => r.status === "no-match");
   if (ctx.json) {
     printJson(ctx, results);

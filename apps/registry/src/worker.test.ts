@@ -88,14 +88,15 @@ describe("worker: edge cache and D1 usage", () => {
   });
   after(() => rmSync(root, { recursive: true, force: true }));
 
-  it("chooses cache lifetimes by route (immutable versions and artifacts, short lists, never health/auth)", () => {
+  it("chooses cache lifetimes by route (immutable provenance, short lists and signed metadata, never health/auth)", () => {
     assert.equal(edgeCacheTtl("/packages/search"), 60);
     assert.equal(edgeCacheTtl("/packages/splice/json"), 60);
     assert.equal(edgeCacheTtl("/packages/splice/json/versions"), 60);
-    assert.equal(edgeCacheTtl("/packages/splice/json/0.1.1"), 86_400);
+    assert.equal(edgeCacheTtl("/packages/splice/json/0.1.1"), 300, "version metadata carries signatures and key revocations");
     assert.equal(edgeCacheTtl("/packages/splice/json/0.1.1/provenance"), 86_400);
     assert.equal(edgeCacheTtl("/packages/splice/json/0.1.1/download"), null, "artifact bytes stay verifiable against storage");
     assert.equal(edgeCacheTtl("/namespaces/splice"), 60);
+    assert.equal(edgeCacheTtl("/namespaces/splice/keys"), 60);
     for (const p of ["/", "/health", "/auth/whoami", "/publish", "/admin/users", "/mcp"]) assert.equal(edgeCacheTtl(p), null, p);
   });
 
@@ -126,13 +127,13 @@ describe("worker: edge cache and D1 usage", () => {
     assert.match(health.headers.get("server-timing") ?? "", /^d1;desc="rows_read=\d+ rows_written=\d+"$/);
   });
 
-  it("does not cache artifact downloads; caches immutable version metadata for a day", async () => {
+  it("does not cache artifact downloads; caches version metadata for five minutes", async () => {
     const cache = memoryCache();
     const download = await handleWorkerRequest(new Request("https://registry.test/packages/splice/json/0.1.1/download"), env, undefined, cache);
     assert.equal(download.status, 200);
     assert.equal(download.headers.get(CACHE_STATUS_HEADER), null);
     const version = await handleWorkerRequest(new Request("https://registry.test/packages/splice/json/0.1.1"), env, undefined, cache);
-    assert.equal(version.headers.get("cache-control"), "public, max-age=86400, immutable");
+    assert.equal(version.headers.get("cache-control"), "public, max-age=300");
     assert.deepEqual([...cache.entries.keys()], ["https://registry.test/packages/splice/json/0.1.1"]);
   });
 
@@ -145,6 +146,8 @@ describe("worker: edge cache and D1 usage", () => {
     ]);
     assert.deepEqual(await stalePaths(new Request("https://r.test/namespaces/dim/maintainers/mallory", { method: "DELETE" }), ok({})), ["/namespaces/dim"]);
     assert.deepEqual(await stalePaths(new Request("https://r.test/admin/namespaces/acme", { method: "PUT" }), ok({})), ["/namespaces/acme"]);
+    assert.deepEqual(await stalePaths(new Request("https://r.test/namespaces/dim/keys", { method: "POST" }), ok({})), ["/namespaces/dim/keys"]);
+    assert.deepEqual(await stalePaths(new Request("https://r.test/packages/dim/greeter/2.0.0/signatures", { method: "POST" }), ok({})), ["/packages/dim/greeter/2.0.0"]);
     assert.deepEqual(await stalePaths(new Request("https://r.test/auth/tokens", { method: "POST" }), ok({})), []);
   });
 });

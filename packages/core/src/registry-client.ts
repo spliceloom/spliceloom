@@ -5,7 +5,10 @@ import {
   TOKENS_PATH,
   WHOAMI_PATH,
   downloadPath,
+  keyPath,
+  keysPath,
   maintainerPath,
+  signaturesPath,
   namespacePath,
   packagePath,
   tokenPath,
@@ -16,6 +19,9 @@ import {
   type CreatedTokenResponse,
   type NamespaceResponse,
   type PackageResponse,
+  type PackageSignature,
+  type SigningKeyInfo,
+  type SigningKeysResponse,
   type TokenListResponse,
   type PublishResponse,
   type SearchResponse,
@@ -149,6 +155,30 @@ export class RegistryClient {
 
   removeMaintainer(token: string, namespace: string, user: string): Promise<NamespaceResponse> {
     return this.json<NamespaceResponse>(maintainerPath(namespace, user), { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+  }
+
+  listKeys(namespace: string): Promise<SigningKeysResponse> {
+    return this.json<SigningKeysResponse>(keysPath(namespace));
+  }
+
+  addKey(token: string, namespace: string, publicKey: string): Promise<SigningKeyInfo> {
+    return this.json<SigningKeyInfo>(keysPath(namespace), {
+      method: "POST",
+      body: JSON.stringify({ publicKey }),
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    });
+  }
+
+  revokeKey(token: string, namespace: string, keyId: string): Promise<SigningKeyInfo> {
+    return this.json<SigningKeyInfo>(keyPath(namespace, keyId), { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+  }
+
+  addSignature(token: string, id: string, version: string, signature: { keyId: string; signature: string }): Promise<PackageSignature> {
+    return this.json<PackageSignature>(signaturesPath(id, version), {
+      method: "POST",
+      body: JSON.stringify(signature),
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    });
   }
 
   publish(bundle: Uint8Array, token: string): Promise<PublishResponse> {

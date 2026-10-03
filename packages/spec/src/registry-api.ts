@@ -13,11 +13,16 @@
  *   GET/POST /auth/tokens, DELETE /auth/tokens/:id  (managing token) → token management
  *   GET  /namespaces/:ns                                  → NamespaceResponse
  *   PUT/DELETE /namespaces/:ns/maintainers/:user  (owner) → NamespaceResponse
+ *   GET  /namespaces/:ns/keys                             → SigningKeysResponse
+ *   POST /namespaces/:ns/keys             (owner)         → SigningKeyInfo
+ *   DELETE /namespaces/:ns/keys/:keyId    (owner)         → SigningKeyInfo (revoked)
+ *   POST /packages/:namespace/:name/:version/signatures (publisher) → PackageSignature
  *
  * Admin endpoints (admin token) are documented in docs/registry.md.
  * Errors are returned as ApiErrorBody with a matching HTTP status.
  */
 import type { Manifest } from "./manifest.js";
+import type { PackageSignature, SigningKeyInfo } from "./signing.js";
 import { parsePackageId } from "./names.js";
 
 export const REGISTRY_API_VERSION = 2;
@@ -82,6 +87,13 @@ export interface VersionResponse {
   artifact?: { filename: string; backend: string | null; url: string | null };
   /** Provenance (Phase 5+ registries). */
   provenance?: ProvenanceRecord;
+  /** Publisher signatures over this exact artifact (registries with signing support). */
+  signatures?: PackageSignature[];
+}
+
+export interface SigningKeysResponse {
+  namespace: string;
+  keys: SigningKeyInfo[];
 }
 
 /**
@@ -206,6 +218,18 @@ export function tokenPath(id: string): string {
 
 export function namespacePath(namespace: string): string {
   return `/namespaces/${encodeURIComponent(namespace)}`;
+}
+
+export function keysPath(namespace: string): string {
+  return `${namespacePath(namespace)}/keys`;
+}
+
+export function keyPath(namespace: string, keyId: string): string {
+  return `${keysPath(namespace)}/${encodeURIComponent(keyId)}`;
+}
+
+export function signaturesPath(id: string, version: string): string {
+  return `${versionPath(id, version)}/signatures`;
 }
 
 export function maintainerPath(namespace: string, user: string): string {

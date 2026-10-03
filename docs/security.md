@@ -22,11 +22,14 @@ Splice distinguishes two properties, and currently guarantees only the first:
 - **Artifact integrity** — the bytes you install are exactly the bytes the registry recorded at
   publish time. Enforced: SHA-256 and size checked before extraction, versions immutable, lock
   pins, files digest re-checked before loading.
-- **Publisher authenticity** — cryptographic proof of *who* produced those bytes. **Not
-  provided.** Packages are not signed. The registry records provenance (the account and token
-  type that published, the time, artifact and manifest hashes), which tells you what the registry
-  observed; it is not a signature and is only as trustworthy as the registry and the publisher's
-  account security. `splice verify` reports the signature check as "skipped: unsigned".
+- **Publisher authenticity** — cryptographic proof of *who* produced those bytes. **Provided for
+  signed versions.** Publishers sign versions with Ed25519 keys registered for their namespace;
+  clients verify every signature locally, refuse signatures that do not match the artifact, pin the
+  signer in `splice.lock`, and can refuse unsigned versions (`--require-signed`). Unsigned
+  versions still install by default and are reported as unsigned. The list of registered keys
+  comes from the registry, so pinning (`SIGNER_CHANGED`) is what protects existing installs from a
+  new key. Details: [signing.md](signing.md). The registry also records provenance (account,
+  token type, time, artifact and manifest hashes) — what the registry observed, not a signature.
 
 Treat installed skills as code you trust at the level of their publisher, and review the
 permissions they request.

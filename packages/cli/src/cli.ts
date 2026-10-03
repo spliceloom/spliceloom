@@ -64,6 +64,18 @@ function liveFlags(values: Record<string, unknown>): LiveFlags {
   return flags;
 }
 import { searchCommand } from "./commands/search.js";
+import { keysCommand, signCommand, type KeyFlags } from "./commands/keys.js";
+
+function signingFlags(values: Record<string, unknown>): { requireSigned: boolean; allowSignerChange: boolean } {
+  return { requireSigned: values["require-signed"] === true, allowSignerChange: values["allow-signer-change"] === true };
+}
+
+function keyFlags(values: Record<string, unknown>): KeyFlags {
+  const flags: KeyFlags = {};
+  if (typeof values.key === "string") flags.key = values.key;
+  if (typeof values.dir === "string") flags.dir = values.dir;
+  return flags;
+}
 import { askCommand, chatCommand, type AskFlags } from "./commands/ask.js";
 import { dashCommand, globalCommand, macroCommand, newsCommand, perpsCommand, tokensCommand } from "./commands/markets.js";
 import { compareCommand, radarCommand, reportCommand, watchCommand, watchlistCommand } from "./commands/pro.js";
@@ -85,6 +97,11 @@ const OPTIONS = {
   project: { type: "string" },
   http: { type: "boolean" },
   "accept-permissions": { type: "boolean" },
+  "require-signed": { type: "boolean" },
+  "allow-signer-change": { type: "boolean" },
+  sign: { type: "boolean" },
+  key: { type: "string" },
+  dir: { type: "string" },
   port: { type: "string" },
   host: { type: "string" },
   label: { type: "string" },
@@ -138,15 +155,17 @@ export const COMMAND_OPTIONS: Record<string, string[]> = {
   init: [],
   search: ["limit"],
   info: [],
-  add: ["accept-permissions"],
-  install: ["accept-permissions"],
+  add: ["accept-permissions", "require-signed", "allow-signer-change"],
+  install: ["accept-permissions", "require-signed", "allow-signer-change"],
   outdated: [],
-  update: ["accept-permissions"],
+  update: ["accept-permissions", "require-signed", "allow-signer-change"],
   verify: [],
   remove: [],
   list: [],
   run: ["input"],
-  publish: ["dry-run"],
+  publish: ["dry-run", "sign", "key"],
+  keys: ["key"],
+  sign: ["key", "dir"],
   login: ["token"],
   logout: [],
   whoami: [],
@@ -279,13 +298,13 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       case "info":
         return await infoCommand(ctx, rest);
       case "add":
-        return await addCommand(ctx, rest, values["accept-permissions"] === true);
+        return await addCommand(ctx, rest, values["accept-permissions"] === true, signingFlags(values));
       case "install":
-        return await installCommand(ctx, rest, values["accept-permissions"] === true);
+        return await installCommand(ctx, rest, values["accept-permissions"] === true, signingFlags(values));
       case "outdated":
         return await outdatedCommand(ctx, rest);
       case "update":
-        return await updateCommand(ctx, rest, values["accept-permissions"] === true);
+        return await updateCommand(ctx, rest, values["accept-permissions"] === true, signingFlags(values));
       case "verify":
         return await verifyCommand(ctx, rest);
       case "remove":
@@ -295,7 +314,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       case "run":
         return await runCommand(ctx, rest, values.input);
       case "publish":
-        return await publishCommand(ctx, rest, values["dry-run"] === true);
+        return await publishCommand(ctx, rest, values["dry-run"] === true, values.sign === true ? { key: typeof values.key === "string" ? values.key : "default" } : undefined);
       case "login":
         return await loginCommand(ctx, rest, values.token);
       case "logout":
@@ -391,6 +410,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         return await newsCommand(ctx, rest, liveFlags(values));
       case "setup":
         return await setupCommand(ctx, rest, { ...(values.template === true ? { template: true } : {}), ...(values.init === true ? { init: true } : {}) });
+      case "keys":
+        return await keysCommand(ctx, rest, keyFlags(values));
+      case "sign":
+        return await signCommand(ctx, rest, keyFlags(values));
       case "namespace":
         return await namespaceCommand(ctx, rest);
     }

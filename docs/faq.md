@@ -38,8 +38,9 @@ Details: [trust.md](trust.md).
 
 ### Does SHA-256 prove who published a package?
 
-No. It proves you got the exact bytes the registry recorded. Who published is recorded as
-provenance by the registry, but packages are **not signed** yet. See
+No. It proves you got the exact bytes the registry recorded. A **signature** proves which key
+registered for the namespace signed those bytes: signed versions are verified locally on every
+install, and `--require-signed` refuses unsigned ones. See [signing.md](signing.md) and
 [security.md](security.md#integrity-is-not-authenticity).
 
 ### Where are artifacts stored?

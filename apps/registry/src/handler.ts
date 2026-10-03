@@ -181,6 +181,9 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
             "DELETE /auth/tokens/:id",
             "GET /namespaces/:namespace",
             "PUT|DELETE /namespaces/:namespace/maintainers/:user",
+            "GET|POST /namespaces/:namespace/keys",
+            "DELETE /namespaces/:namespace/keys/:keyId",
+            "POST /packages/:namespace/:name/:version/signatures",
             "POST /mcp (MCP Streamable HTTP, bearer token)",
           ],
         });
@@ -217,10 +220,13 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
       if (first === "namespaces" && a && n === 2 && method === "GET") {
         return json(await service.getNamespace(a));
       }
+      if (first === "namespaces" && a && b === "keys" && n === 3 && method === "GET") {
+        return json(await service.listKeys(a));
+      }
 
       // Everything below is authenticated: limit per client before verifying credentials.
       const authenticated =
-        first === "publish" || first === "auth" || first === "admin" || first === "mcp" || (first === "namespaces" && method !== "GET");
+        first === "publish" || first === "auth" || first === "admin" || first === "mcp" || ((first === "namespaces" || first === "packages") && method !== "GET");
       if (authenticated) await enforce(limits.auth, `ip:${clientKey(request)}`);
 
       if (first === "mcp" && n === 1) {
@@ -246,6 +252,17 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
           return json(await service.createUserToken(user, tokenOptions(await readJson(request))), 201);
         }
         if (n === 3 && b && method === "DELETE") return json(await service.revokeUserToken(await requireUser(request), b));
+      }
+
+      if (first === "packages" && a && b && c && d === "signatures" && n === 5 && method === "POST") {
+        const user = await requireUser(request);
+        const body = await readJson(request);
+        return json(await service.addSignature(user, formatPackageId(a, b), c, { keyId: stringField(body, "keyId", true)!, signature: stringField(body, "signature", true)! }), 201);
+      }
+
+      if (first === "namespaces" && a && b === "keys") {
+        if (n === 3 && method === "POST") return json(await service.addKey(await requireUser(request), a, stringField(await readJson(request), "publicKey", true)!), 201);
+        if (n === 4 && c && method === "DELETE") return json(await service.revokeKey(await requireUser(request), a, c));
       }
 
       if (first === "namespaces" && a && b === "maintainers" && c && n === 4) {
@@ -325,7 +342,7 @@ export function isStorageUnavailable(error: unknown): boolean {
 
 /** Anonymous read-only routes: registry info, health, packages (search/metadata/provenance/download), namespace info. */
 export function isPublicReadPath(pathname: string): boolean {
-  return /^\/(?:health\/?)?$/.test(pathname) || /^\/packages(?:\/|$)/.test(pathname) || /^\/namespaces\/[^/]+\/?$/.test(pathname);
+  return /^\/(?:health\/?)?$/.test(pathname) || /^\/packages(?:\/|$)/.test(pathname) || /^\/namespaces\/[^/]+(?:\/keys)?\/?$/.test(pathname);
 }
 
 export const CORS_HEADERS: Readonly<Record<string, string>> = {

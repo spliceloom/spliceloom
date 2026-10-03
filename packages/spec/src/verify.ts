@@ -6,18 +6,19 @@
  *   package   the archive decodes safely and is a valid package whose manifest names the expected
  *             package and version
  *   metadata  the manifest inside the artifact equals the manifest the registry serves
- *   signature signing policy — today no signatures exist, so this reports "unsigned"; a future
- *             SignatureVerifier plugs in here without changing callers
+ *   signature publisher signatures (Ed25519, see signing.ts): every signature returned must verify
+ *             over this exact artifact; unsigned packages pass unless signatures are required
  *
  * Checks run in order and stop at the first failure (later checks are "skipped"), so untrusted
  * bytes are never decoded after a hash mismatch. Uses Web APIs only (Node.js and Workers).
  *
- * SHA-256 proves the bytes are the ones the registry recorded. It is NOT a signature and does not
- * prove who authored the package.
+ * SHA-256 proves the bytes are the ones the registry recorded. A verified signature additionally proves
+ * that the holder of a key registered for the namespace signed exactly these bytes.
  */
 import { decodePackageArchive } from "./archive.js";
 import { INTEGRITY_PATTERN, computeIntegrity, validateBundleFiles, type BundleFile } from "./bundle.js";
 import { manifestId, validateManifest, type Manifest } from "./manifest.js";
+import { checkSignatures, type PackageSignature } from "./signing.js";
 
 export type CheckStatus = "passed" | "failed" | "skipped";
 
@@ -25,15 +26,6 @@ export interface VerificationCheck {
   id: string;
   status: CheckStatus;
   message: string;
-}
-
-/** A detached signature over an artifact. Reserved: no signatures are produced or accepted yet. */
-export interface PackageSignature {
-  /** e.g. "ed25519", "sigstore". */
-  algorithm: string;
-  keyId: string;
-  /** Base64 signature value. */
-  value: string;
 }
 
 /** What the registry says the artifact is. */
@@ -55,6 +47,7 @@ export interface VerificationInput {
 export interface VerificationState {
   files?: BundleFile[];
   manifest?: Manifest;
+  signedBy?: string;
 }
 
 export interface PackageVerifier {
@@ -68,6 +61,8 @@ export interface VerificationResult {
   /** Present when verification passed: the validated files and manifest, ready to install. */
   files?: BundleFile[];
   manifest?: Manifest;
+  /** Key id of the verified publisher signature (absent when unsigned). */
+  signedBy?: string;
 }
 
 const pass = (id: string, message: string): VerificationCheck => ({ id, status: "passed", message });
@@ -139,16 +134,22 @@ export class MetadataVerifier implements PackageVerifier {
 }
 
 /**
- * Signing policy. Splice does not sign packages yet: unsigned artifacts are accepted and reported
- * as such. Signatures that cannot be verified fail closed (never silently ignored).
+ * Signing policy. Every signature the registry returns must verify over this exact artifact (fail
+ * closed: a bad signature is never ignored). Unsigned packages pass, reported as unsigned, unless
+ * `require` is set.
  */
 export class SignaturePolicyVerifier implements PackageVerifier {
   readonly id = "signature";
-  async verify({ expected }: VerificationInput): Promise<VerificationCheck> {
-    if (!expected.signatures || expected.signatures.length === 0) {
-      return { id: this.id, status: "skipped", message: "unsigned: package signing is not implemented yet (integrity is SHA-256 only)" };
+  constructor(private readonly options: { require?: boolean } = {}) {}
+  async verify({ expected }: VerificationInput, state: VerificationState): Promise<VerificationCheck> {
+    const check = await checkSignatures(expected.id, expected.version, expected.integrity, expected.signatures);
+    if (check.status === "invalid") return fail(this.id, check.reason);
+    if (check.status === "verified") {
+      state.signedBy = check.keyId;
+      return pass(this.id, `signed by ${check.keyId}, a key registered for the namespace`);
     }
-    return fail(this.id, `unsupported signature algorithm(s): ${expected.signatures.map((s) => s.algorithm).join(", ")}`);
+    if (this.options.require) return fail(this.id, "unsigned: signatures are required (--require-signed) but this version has none");
+    return { id: this.id, status: "skipped", message: "unsigned: integrity is verified by SHA-256 only" };
   }
 }
 
@@ -167,8 +168,8 @@ export async function filesDigest(files: ReadonlyArray<{ path: string; content: 
   return computeIntegrity(encoder.encode(lines.join("")));
 }
 
-export function defaultVerifiers(): PackageVerifier[] {
-  return [new Sha256Verifier(), new SizeVerifier(), new PackageContentVerifier(), new MetadataVerifier(), new SignaturePolicyVerifier()];
+export function defaultVerifiers(options: { requireSigned?: boolean } = {}): PackageVerifier[] {
+  return [new Sha256Verifier(), new SizeVerifier(), new PackageContentVerifier(), new MetadataVerifier(), new SignaturePolicyVerifier({ require: options.requireSigned === true })];
 }
 
 export async function verifyArtifact(input: VerificationInput, verifiers: PackageVerifier[] = defaultVerifiers()): Promise<VerificationResult> {
@@ -189,5 +190,6 @@ export async function verifyArtifact(input: VerificationInput, verifiers: Packag
     result.files = state.files;
     result.manifest = state.manifest;
   }
+  if (!failed && state.signedBy) result.signedBy = state.signedBy;
   return result;
 }

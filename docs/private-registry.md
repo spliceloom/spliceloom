@@ -16,7 +16,6 @@
 - Private namespaces whose packages require authentication to read.
 - Internal skills shared inside an organization ([Organizations](organizations.md)).
 - An audit trail of publishes and installs.
-- Package signing, so consumers can verify who published a version, not only its integrity.
 - A dashboard (planned at `app.spliceloom.com`) for packages, providers, API keys, activity and
   settings.
 

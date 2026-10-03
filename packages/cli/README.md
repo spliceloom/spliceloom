@@ -142,7 +142,8 @@ Default: `https://registry.spliceloom.com`. Override with `--registry <url>`,
 ## Security notes
 
 SHA-256 verification proves that you received the bytes the registry recorded — **not** who wrote
-them; package signing is not implemented yet. The sandbox is a strong guardrail, not OS-level
+them. Publisher signatures do: signed versions are verified locally on every install, and
+`--require-signed` refuses unsigned ones (`splice keys`, `splice publish --sign`). The sandbox is a strong guardrail, not OS-level
 isolation. Market data is not financial advice.
 
 ## License

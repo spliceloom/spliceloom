@@ -15,7 +15,8 @@ splice verify @splice/github
 
 prints the publisher, publication time, SHA-256, provenance and each check (sha256, size, package,
 metadata, signature, installed files). SHA-256 proves integrity — the bytes are the ones recorded —
-not authorship; packages are not signed yet. Details: [Trust and verification](trust.md).
+not authorship; signed versions also carry a publisher signature ([Package signing](signing.md)).
+Details: [Trust and verification](trust.md).
 
 ## Data provenance
 

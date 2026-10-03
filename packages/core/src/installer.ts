@@ -3,6 +3,7 @@ import { mkdir, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/prom
 import { dirname, join, relative, sep } from "node:path";
 import {
   INTEGRITY_PATTERN,
+  defaultVerifiers,
   describePermissions,
   downloadPath,
   emptyPermissions,
@@ -43,6 +44,13 @@ export interface AddOptions {
    * installed from it. `null`/omitted: no cache.
    */
   cache?: ArtifactCache | null;
+  /** Refuse versions without a verified publisher signature (`--require-signed`). */
+  requireSigned?: boolean;
+  /**
+   * Accept a version signed by a different key than the installed one, or unsigned when the
+   * installed one was signed (`--allow-signer-change`). Refused by default.
+   */
+  allowSignerChange?: boolean;
 }
 
 export type UpdateOptions = AddOptions;
@@ -58,6 +66,8 @@ export interface AddResult {
   alreadyInstalled: boolean;
   /** True when the artifact came from the local cache instead of a download (it was still verified). */
   fromCache?: boolean;
+  /** Key id of the verified publisher signature; absent when the version is unsigned. */
+  signedBy?: string;
   /**
    * True when the registry was unreachable and the locked version was installed from the local
    * cache. The artifact was verified against the lockfile's SHA-256; registry metadata could not
@@ -196,16 +206,21 @@ async function installVersion(ctx: InstallContext, req: InstallRequest): Promise
       }
       const result: AddResult = { id, version, integrity: locked.integrity, manifest: installed.manifest, alreadyInstalled: true };
       if (req.offline) result.offline = true;
+      if (locked.signedBy) result.signedBy = locked.signedBy;
       return result;
     }
   }
 
   // 1. What the artifact must be. A locked version is pinned to the lockfile's SHA-256 and size.
-  let expected: { integrity: string; size?: number; manifest?: Manifest };
+  let expected: { integrity: string; size?: number; manifest?: Manifest; signatures?: NonNullable<Awaited<ReturnType<RegistryClient["getVersion"]>>["signatures"]> };
   if (req.offline) {
     if (!locked) throw new CoreError("REGISTRY_UNREACHABLE", `Could not reach the registry at ${client.baseUrl} to resolve ${label}.`);
     expected = { integrity: locked.integrity };
     if (locked.size !== undefined) expected.size = locked.size;
+    // Offline: the bytes are pinned by the lockfile SHA-256; the signature was verified when locked.
+    if (options.requireSigned && !locked.signedBy) {
+      throw new CoreError("SIGNATURE_REQUIRED", `${label} was not signed when it was locked, and signatures are required.`);
+    }
   } else {
     let info;
     try {
@@ -232,6 +247,7 @@ async function installVersion(ctx: InstallContext, req: InstallRequest): Promise
       });
     }
     expected = { integrity: info.integrity, size: info.size, manifest: info.manifest };
+    if (info.signatures) expected.signatures = info.signatures;
   }
 
   // 2. The artifact: verified cache entry, or a download.
@@ -256,17 +272,33 @@ async function installVersion(ctx: InstallContext, req: InstallRequest): Promise
 
   // 3. Verified before anything touches the project; there is no way to skip this (cached bytes included).
   step("verifying", expected.integrity);
-  const verification = await verifyArtifact({ bytes, expected: { id, version, ...expected } });
+  const verification = await verifyArtifact({ bytes, expected: { id, version, ...expected } }, defaultVerifiers({ requireSigned: options.requireSigned === true && !req.offline }));
   if (!verification.verified || !verification.files || !verification.manifest) {
     const failed = verification.checks.find((c) => c.status === "failed");
     const integrityProblem = failed?.id === "sha256" || failed?.id === "size";
+    const details = verification.checks.filter((c) => c.status !== "skipped").map((c) => `${c.id}: ${c.message}`);
+    if (failed?.id === "signature") {
+      const required = /signatures are required/.test(failed.message);
+      throw new CoreError(required ? "SIGNATURE_REQUIRED" : "SIGNATURE_INVALID", required ? `${label} is not signed, and signatures are required.` : `Signature check failed for ${label}. Refusing to install.`, {
+        details,
+        hint: required ? "Install without --require-signed, or ask the publisher to sign it (`splice sign`)." : "A signature that does not match the artifact means the package or its metadata was tampered with. Nothing was changed.",
+      });
+    }
     throw new CoreError(
       integrityProblem ? "INTEGRITY_MISMATCH" : "INVALID_PACKAGE",
       integrityProblem ? `Integrity check failed for ${label}` : `Verification failed for ${label}`,
-      { details: verification.checks.filter((c) => c.status !== "skipped").map((c) => `${c.id}: ${c.message}`) },
+      { details },
     );
   }
   const manifest = verification.manifest;
+  // Offline installs keep the signer recorded when the version was locked.
+  const signedBy = req.offline ? locked?.signedBy : verification.signedBy;
+  // Trust on first use: the key that signed the installed version must sign what replaces it.
+  if (current?.signedBy && signedBy !== current.signedBy && !options.allowSignerChange) {
+    throw new CoreError("SIGNER_CHANGED", `${label} is ${signedBy ? `signed by ${signedBy}` : "unsigned"}, but the installed ${id}@${current.version} was signed by ${current.signedBy}. Refusing to install.`, {
+      hint: "This happens when the publisher rotated or revoked their key — or when someone else published. Check the namespace keys (`splice keys list`), then rerun with --allow-signer-change if you trust the change.",
+    });
+  }
   if (!fromCache) await options.cache?.put(expected.integrity, bytes);
 
   // 4. Permissions are never granted implicitly.
@@ -294,6 +326,7 @@ async function installVersion(ctx: InstallContext, req: InstallRequest): Promise
     resolved: req.offline && locked ? locked.resolved : client.url(downloadPath(id, version)),
     permissions: manifest.permissions,
   };
+  if (signedBy) entry.signedBy = signedBy;
   await swapInstall(ctx, id, verification.files, async () => {
     if (req.saveRange !== null) config.packages[id] = req.saveRange;
     lock.packages[id] = entry;
@@ -305,6 +338,7 @@ async function installVersion(ctx: InstallContext, req: InstallRequest): Promise
   if (current && current.version !== version) result.previousVersion = current.version;
   if (fromCache) result.fromCache = true;
   if (req.offline) result.offline = true;
+  if (signedBy) result.signedBy = signedBy;
   return result;
 }
 

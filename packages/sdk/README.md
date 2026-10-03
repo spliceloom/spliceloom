@@ -60,7 +60,8 @@ key (public Robinhood Chain RPC, DexScreener, GeckoTerminal, DefiLlama, Lighter,
 - Security model: https://docs.spliceloom.com/security
 - Source: https://github.com/spliceloom/spliceloom
 
-SHA-256 verification proves integrity, not authorship (packages are not signed yet); the sandbox is a
+SHA-256 verification proves integrity; publisher signatures (`{ requireSigned: true }` on `add`) prove
+which registered key signed a version; the sandbox is a
 strong guardrail, not OS-level isolation. Market data is not financial advice.
 
 ## License

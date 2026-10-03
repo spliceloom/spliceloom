@@ -19,7 +19,12 @@ export type CoreErrorCode =
   | "PERMISSIONS_NOT_GRANTED"
   | "REGISTRY_UNREACHABLE"
   | "REGISTRY_UNAVAILABLE"
-  | "REGISTRY_ERROR";
+  | "REGISTRY_ERROR"
+  | "SIGNATURE_INVALID"
+  | "SIGNATURE_REQUIRED"
+  | "SIGNER_CHANGED"
+  | "KEY_NOT_FOUND"
+  | "KEY_EXISTS";
 
 export class CoreError extends Error {
   readonly code: CoreErrorCode;

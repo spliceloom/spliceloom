@@ -1,5 +1,5 @@
 import { SpliceProject } from "@spliceloom/core";
-import { describePermissions, parsePackageRef } from "@spliceloom/spec";
+import { checkSignatures, describePermissions, parsePackageRef } from "@spliceloom/spec";
 import { UsageError, type Context } from "../io.js";
 import { printJson, spliceFor } from "./shared.js";
 
@@ -28,6 +28,9 @@ export async function infoCommand(ctx: Context, positionals: string[]): Promise<
   ctx.out(`published:   ${detail.publishedAt}`);
   ctx.out(`integrity:   ${detail.integrity}`);
   ctx.out(`size:        ${detail.size} bytes`);
+  // Checked locally: a signature that does not verify is reported, never shown as signed.
+  const check = await checkSignatures(pkg.name, detail.version, detail.integrity, detail.signatures);
+  ctx.out(`signature:   ${check.status === "verified" ? s.green(`verified, signed by ${check.keyId}`) : check.status === "invalid" ? s.red(`INVALID — ${check.reason}`) : s.dim("unsigned")}`);
   if (project) ctx.out(`installed:   ${installed ?? "no"}`);
   ctx.out();
   ctx.out(s.bold("Permissions"));

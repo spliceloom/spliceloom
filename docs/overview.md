@@ -130,7 +130,6 @@ These are **future concepts**. Nothing in the current code implements them:
   registry admin).
 - **Hosted skill execution**: the registry only offers discovery over MCP; executing skills needs
   a Splice runtime you run (`splice mcp`, `splice mcp --http`, SDK).
-- **Package signing** and provenance (only SHA-256 checksums exist).
 - **Framework adapters** (LangChain, OpenAI Agents, …) on top of the SDK.
 - **Robinhood Chain / onchain skills.**
 - **$SPLICE token.** Live. Official contract address:

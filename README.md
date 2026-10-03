@@ -181,8 +181,9 @@ flowchart LR
 
 ## Security
 
-SHA-256 verification proves **integrity** — you received the bytes the registry recorded — not
-**authenticity**: packages are not signed yet. The runtime is a strong guardrail built on the Node.js
+SHA-256 verification proves **integrity** — you received the bytes the registry recorded. Publisher
+**signatures** (Ed25519, checked locally on every install; `--require-signed` refuses unsigned
+versions) prove which registered key signed them — see [package signing](https://docs.spliceloom.com/signing). The runtime is a strong guardrail built on the Node.js
 permission model and an in-process network guard, not OS-level isolation. Provider keys stay in the
 host and are redacted from every result. Read the [security model](https://docs.spliceloom.com/security)
 before running third-party skills, and report vulnerabilities privately as described in
@@ -204,7 +205,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 Developer preview. Working today: the public registry, CLI, SDK, MCP servers, sandboxed runtime,
-capability broker, live data layer and eight official skills. Not yet: package signing, organizations
+capability broker, live data layer and eight official skills. Not yet: organizations
 and private registries, hosted skill execution. See the [roadmap](https://docs.spliceloom.com/overview).
 
 > [!IMPORTANT]

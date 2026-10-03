@@ -9,4 +9,5 @@ export * from "./archive.js";
 export * from "./registry-api.js";
 export * from "./tools.js";
 export * from "./verify.js";
+export * from "./signing.js";
 export * from "./redact.js";

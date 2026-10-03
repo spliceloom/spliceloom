@@ -80,7 +80,7 @@ decoded after a hash mismatch:
 | `size` | the byte length differs from the recorded size |
 | `package` | the archive is unsafe or invalid (paths, links, SKILL.md, manifest, tool entries) or names another package/version |
 | `metadata` | the manifest served by the registry differs from the manifest inside the artifact (tampered metadata) |
-| `signature` | a signature is present but cannot be verified (fail closed). Unsigned artifacts report `skipped: unsigned` |
+| `signature` | a signature does not verify over this artifact or its key id does not match its key (fail closed); with `--require-signed`, the version is unsigned. Otherwise unsigned artifacts report `skipped: unsigned`; signatures by revoked keys are ignored. See [signing.md](signing.md) |
 
 `splice verify` / `splice.verify()` additionally check:
 
@@ -120,16 +120,16 @@ implemented**: the registry rejects packages that declare dependencies
 
 - `PackageVerifier` — one check (`id`, `verify(input, state)`); `verifyArtifact(input, verifiers)`
   runs a list of them.
-- `PackageSignature` — `{ algorithm, keyId, value }`, carried in `ExpectedArtifact.signatures`.
+- `PackageSignature` — `{ keyId, publicKey, signature, signedAt, revokedAt }`, carried in
+  `ExpectedArtifact.signatures` (see [signing.md](signing.md)).
 - `VerificationResult` / `VerificationCheck` — structured, deterministic outcome.
 - Today: `Sha256Verifier`, `SizeVerifier`, `PackageContentVerifier`, `MetadataVerifier`,
-  `SignaturePolicyVerifier` (reports unsigned, rejects unverifiable signatures).
+  `SignaturePolicyVerifier` (Ed25519 publisher signatures; `defaultVerifiers({ requireSigned })`).
 
-A future `SignatureVerifier` (e.g. Sigstore/cosign or Ed25519 with published keys) replaces
-`SignaturePolicyVerifier` in `defaultVerifiers()`; the installer, CLI and SDK stay unchanged.
-Splice generates, stores and requires no signing keys today.
+Publishers generate and register keys with `splice keys` and sign with `splice publish --sign`
+or `splice sign`; see [signing.md](signing.md).
 
 ## Not implemented
 
-Signatures, key management, transparency logs, attestations (SLSA/in-toto), dependency
-resolution, malware scanning, reputation.
+Transparency logs, attestations (SLSA/in-toto), per-user signing keys, dependency resolution,
+malware scanning, reputation. Publisher signatures and namespace keys exist: see [signing.md](signing.md).

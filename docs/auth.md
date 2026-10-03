@@ -123,5 +123,5 @@ limits use D1.
 - Self-service accounts, OAuth / social login, email verification.
 - Organizations and teams owning namespaces; per-package (rather than per-namespace) maintainers.
 - Fine-grained scopes beyond namespace + publish/manage.
-- Package signing and provenance. Integrity is SHA-256 checksums only — see
-  [publishing.md](publishing.md#integrity).
+- Signing keys tied to individual users (today keys are registered per namespace by its owner;
+  see [signing.md](signing.md)).
