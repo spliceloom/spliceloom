@@ -121,6 +121,8 @@ describe("worker e2e: publish → search → info → add → list → run → r
 
     await admin("POST", "/admin/users", { name: "dim" });
     await admin("POST", "/admin/users", { name: "mallory" });
+    // @dim is a reserved name: an admin assigns it.
+    await admin("PUT", "/admin/namespaces/dim", { owner: "dim" });
     dimToken = (await admin("POST", "/admin/users/dim/tokens", { label: "e2e" })).token!;
     malloryToken = (await admin("POST", "/admin/users/mallory/tokens", {})).token!;
 
@@ -444,6 +446,8 @@ describe("worker with R2 artifact storage (wrangler.r2.toml)", () => {
   it("publishes into R2 and serves the same bytes", async () => {
     const auth = { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" };
     assert.equal((await fetch(`${url}/admin/users`, { method: "POST", headers: auth, body: JSON.stringify({ name: "dim" }) })).status, 201);
+    // @dim is a reserved name: an admin assigns it.
+    assert.equal((await fetch(`${url}/admin/namespaces/dim`, { method: "PUT", headers: auth, body: JSON.stringify({ owner: "dim" }) })).status, 200);
     const token = ((await (await fetch(`${url}/admin/users/dim/tokens`, { method: "POST", headers: auth, body: "{}" })).json()) as { token: string }).token;
 
     const packed = await packDirectory(writeGreeter(root, "1.0.0"));

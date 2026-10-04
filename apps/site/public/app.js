@@ -1493,7 +1493,9 @@
       if (!agent) return null;
       const card = el("article", undefined, "agent-card");
       const head = el("header");
-      head.append(el("h3", p.name, "mono"), el("span", `v${p.latest}`, "skill-version mono"));
+      const title = el("h3", undefined, "mono");
+      title.append(Object.assign(el("a", p.name), { href: `agent?id=${encodeURIComponent(p.name)}` }));
+      head.append(title, el("span", `v${p.latest}`, "skill-version mono"));
       const facts = el("p", undefined, "agent-facts mono");
       facts.textContent = `by ${v.publishedBy || "?"} · ${(v.signatures || []).length ? `signed by ${v.signatures[0].keyId}` : "unsigned"} · uses ${agent.skills.join(", ") || "no skills"}`;
       const details = el("details");
@@ -1506,6 +1508,71 @@
     }));
     const shown = cards.filter(Boolean);
     list.replaceChildren(...(shown.length ? shown : [el("p", "No agent packages yet.", "muted")]));
+  };
+
+  // One agent package: /agent?id=@namespace/name
+  const agentPage = async () => {
+    const registry = (document.querySelector('meta[name="splice:registry"]')?.getAttribute("content") || "").replace(/\/$/, "");
+    const name = root.querySelector("[data-agent-name]");
+    const description = root.querySelector("[data-agent-description]");
+    const fail = (text) => {
+      name.textContent = "Agent not found";
+      description.textContent = text;
+    };
+    const m = /^@([a-z0-9-]{1,64})\/([a-z0-9-]{1,64})$/.exec(new URLSearchParams(location.search).get("id") || "");
+    if (!m || !registry) return fail("Open an agent from the directory.");
+    const read = async (path) => {
+      const r = await fetch(`${registry}${path}`, { credentials: "omit" });
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    };
+    const latestOf = async (ns, pkg) => {
+      const p = await read(`/packages/${ns}/${pkg}`);
+      if (!/^[0-9A-Za-z.+-]+$/.test(p.latest)) throw new Error("version");
+      return read(`/packages/${ns}/${pkg}/${p.latest}`);
+    };
+    let v;
+    try {
+      v = await latestOf(m[1], m[2]);
+    } catch {
+      return fail("The registry has no package with that name.");
+    }
+    const agent = v.manifest && v.manifest.agent;
+    if (!agent) return fail("That package is a skill, not an agent.");
+    const id = `@${m[1]}/${m[2]}`;
+    document.title = `${id} — Splice agents`;
+    name.textContent = id;
+    description.textContent = v.manifest.description;
+    root.querySelector("[data-agent-facts]").textContent = `v${v.version} · published by ${v.publishedBy || "?"} on ${String(v.publishedAt).slice(0, 10)} · ${(v.signatures || []).length ? `signed by ${v.signatures[0].keyId}` : "unsigned"} · ${v.integrity}`;
+    const run = [...agent.skills.map((s) => `splice add ${s} --accept-permissions`), `splice add ${id}`, `splice agent run ${id} ${JSON.stringify((agent.examples && agent.examples[0]) || "your task")}`].join("\n");
+    root.querySelector("[data-agent-run]").textContent = run;
+    root.querySelector("[data-agent-run-copy]").setAttribute("data-copy", run);
+    root.querySelector("[data-agent-instructions]").textContent = agent.instructions;
+    const examples = root.querySelector("[data-agent-examples]");
+    examples.replaceChildren(...(agent.examples || []).map((x) => el("li", x)));
+    root.querySelector("[data-agent-examples-head]").hidden = !(agent.examples || []).length;
+    const skills = root.querySelector("[data-agent-skills]");
+    skills.replaceChildren(...(agent.skills.length ? agent.skills : []).map((s) => {
+      const box = el("div", undefined, "agent-skill");
+      box.append(el("strong", s, "mono"), el("p", "Loading…", "muted"));
+      return box;
+    }));
+    if (!agent.skills.length) skills.append(el("p", "None: this agent only uses its own tools.", "muted"));
+    root.querySelector("[data-agent-body]").hidden = false;
+    // What each skill can do: its tools and the permissions you grant when you install it.
+    agent.skills.forEach(async (s, i) => {
+      const p = skills.children[i].querySelector("p");
+      const sm = /^@([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(s);
+      try {
+        const sv = await latestOf(sm[1], sm[2]);
+        const perm = sv.manifest.permissions || {};
+        const grants = [...(perm.capabilities || []).map((c) => `capability ${c}`), ...(perm.network || []).map((h) => `network ${h}`), ...((perm.fs && perm.fs.read) || []).map((f) => `read ${f}`), ...((perm.fs && perm.fs.write) || []).map((f) => `write ${f}`), ...(perm.env || []).map((x) => `env ${x}`)];
+        p.className = "";
+        p.textContent = `v${sv.version} · tools: ${sv.manifest.tools.map((t) => t.name).join(", ")} · permissions: ${grants.join(", ") || "none"}`;
+      } catch {
+        p.textContent = "Not found in this registry.";
+      }
+    });
   };
 
   // Publisher sign-up: a code in a public gist proves the GitHub account; the registry returns a token once.
@@ -1793,6 +1860,7 @@
   const start = () => {
     if (kind === "stocks") stocks();
     else if (kind === "chain") odds();
+    else if (kind === "agent-page") agentPage();
     else if (kind === "agents") {
       agents();
       agentPackages();

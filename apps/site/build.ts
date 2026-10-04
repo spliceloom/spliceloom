@@ -16,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./src/markdown.ts";
-import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderBot, renderAgents, DEFAULT_AGENTS_URL, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
+import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderBot, renderAgents, renderAgentPage, DEFAULT_AGENTS_URL, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
 import { loadProviders } from "./src/providers.ts";
 import { loadSnapshot, type RegistrySnapshot, type SkillView } from "./src/registry.ts";
 import { BROKER_CAPABILITIES } from "../../packages/spec/dist/index.js";
@@ -326,6 +326,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   const agentsBase = (options.agentsUrl ?? DEFAULT_AGENTS_URL).replace(/\/$/, "");
   const agents = outputDir(agentsOut);
   agents.write("index.html", renderAgents(config, snapshot, SKILL_PAGES));
+  agents.write("agent.html", renderAgentPage(config));
   agents.write("404.html", renderNotFound(config, "agents"));
   copyCommonAssets(agents);
   agents.copy(join(here, "public", "og", "og-landing.png"), "assets/og-landing.png");

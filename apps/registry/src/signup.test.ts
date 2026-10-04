@@ -159,3 +159,45 @@ describe("self-service sign-up (GitHub gist)", () => {
     assert.deepEqual(seen.slice(0, 2), ["https://api.github.com/users/octocat Bearer t", "https://api.github.com/users/octocat/gists?per_page=30 Bearer t"]);
   });
 });
+
+describe("moderation and reserved names", () => {
+  it("hides a package from search without breaking installs, and keeps reserved names out of sign-up", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { packDirectory } = await import("@spliceloom/core");
+    const { hashToken } = await import("./auth.js");
+    const root = mkdtempSync(join(tmpdir(), "splice-moderation-"));
+    const db = createSqliteDatabase(":memory:");
+    const service = new RegistryService(db, new MemoryArtifactStore());
+    try {
+      const dir = join(root, "spam");
+      mkdirSync(dir);
+      writeFileSync(join(dir, "manifest.json"), JSON.stringify({ specVersion: 1, namespace: "mallory", name: "spam", version: "0.1.0", description: "Totally useful agent", runtime: { type: "node" }, permissions: { fs: { read: [], write: [] }, network: [], env: [] }, tools: [], agent: { instructions: "x", skills: [] } }));
+      writeFileSync(join(dir, "SKILL.md"), "# spam\n");
+      await service.publish((await packDirectory(dir)).bytes, await service.createUser("mallory"));
+      assert.equal((await service.search("spam")).results.length, 1);
+
+      const handle = createRegistryHandler({ service, adminTokenHash: await hashToken("splice_admin_test"), identity: { lookup: async () => null } });
+      const put = (token: string, body: unknown) => handle(new Request("http://registry.test/admin/packages/mallory/spam/hidden", { method: "PUT", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) }));
+      assert.equal((await put("splice_wrong", { hidden: true })).status, 403);
+      assert.equal((await put("splice_admin_test", {})).status, 400);
+      assert.deepEqual(await (await put("splice_admin_test", { hidden: true })).json(), { name: "@mallory/spam", hidden: true });
+      assert.equal((await service.search("spam")).results.length, 0);
+      assert.equal((await service.search("", 20, "agent")).results.length, 0);
+      // Still there for anyone who already depends on it.
+      assert.equal((await service.getVersion("@mallory/spam", "0.1.0")).version, "0.1.0");
+      await put("splice_admin_test", { hidden: false });
+      assert.equal((await service.search("spam")).results.length, 1);
+
+      for (const name of ["dim", "spliceloom", "admin"]) {
+        const r = await handle(new Request("http://registry.test/signup/start", { method: "POST", body: JSON.stringify({ github: name }) }));
+        assert.equal(r.status, 403, name);
+        assert.equal(((await r.json()) as { error: { code: string } }).error.code, "NAMESPACE_RESERVED");
+      }
+    } finally {
+      await service.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -12,6 +12,9 @@ are versioned independently in the registry; their versions are listed per relea
   See [docs/agents.md](docs/agents.md).
 - Official agents: `@splice/token-analyst` and `@splice/stock-token-desk` (signed).
 - Registry: search results carry `kind` (`skill` or `agent`), and `?kind=agent` filters.
+- More official agents: `@splice/tx-explainer`, `@splice/web-researcher`, `@splice/repo-scout`.
+- Each agent has its own page on agents.spliceloom.com (`/agent?id=@namespace/name`).
+- Registry moderation: an admin can hide a package from search; a set of names is reserved.
 
 ## Website — 2026-10-04
 

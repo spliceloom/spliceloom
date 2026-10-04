@@ -154,6 +154,7 @@ function header(loc: PageLoc, current: "home" | "docs" | "skills", config: SiteC
       ${link("docs/robinhood-chain", "Robinhood Chain", "robinhood-chain")}
       ${link("docs/security", "Security", "security")}
       ${link("live", "Live")}
+      ${link("agents", "Agents")}
       ${link("docs/introduction", "Docs", undefined, current === "docs")}
       <div class="nav-extra"><a class="btn btn-ghost" href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a class="btn btn-solid" href="${a("docs/quickstart")}">Get started</a></div>
     </nav>
@@ -685,6 +686,7 @@ ${header(loc, "home", config)}
         <article class="cap reveal"><h3>$SPLICE</h3><p>Live price from the pool, candles, trades, holders, burns and an on-chain transparency panel.</p><a class="text-link" href="${link("token")}">Open /token ${ARROW}</a></article>
         <article class="cap reveal"><h3>Telegram bot</h3><p>All of the above as commands, plus alerts sent to your chat: price levels, large trades, burns, new tokens.</p><a class="text-link" href="${link("bot")}">Meet the bot ${ARROW}</a></article>
       </div>
+      <p class="more"><a class="text-link" href="${link("agents")}">Agent directory: published agents, open-source agents and free publishing ${ARROW}</a></p>
     </div>
   </section>
 
@@ -1348,6 +1350,33 @@ splice publish ./my-skill</code></pre></article>
 splice publish --sign</code></pre></article>
       </div>
       <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${link("docs/agents")}">Agent packages ${ARROW}</a><a class="text-link" href="${link("docs/auth")}">Tokens and namespaces ${ARROW}</a></p>
+    </div>
+  </section>`);
+}
+
+/** One agent package (`/agent?id=@namespace/name` on the agents host), filled in the browser from the registry. */
+export function renderAgentPage(config: SiteConfig): string {
+  const loc: PageLoc = { host: "agents", dir: "" };
+  return sitePage(config, loc, { title: "Agent — Splice", description: "An agent package on the Splice registry: its instructions, the skills it may call, who published and signed it, and how to run it.", path: "agent", bodyClass: "live-page" }, `
+  <section class="section" data-live="agent-page" data-api="${e(config.api ?? "")}">
+    <div class="shell narrow">
+      <p class="kicker">Agent</p>
+      <h1 class="display agent-title mono" data-agent-name>…</h1>
+      <p class="lead" data-agent-description></p>
+      <p class="agent-facts mono" data-agent-facts></p>
+      <div data-agent-body hidden>
+        <h2 class="subhead mono">Run it</h2>
+        <div class="install-row"><code class="agent-run" data-agent-run></code><button type="button" class="copy-inline" data-copy="" data-agent-run-copy>Copy</button></div>
+        <p class="fine">Needs CLI 0.4.0 or newer and an AI provider key on your machine. The skills are installed with your consent to their permissions; the agent itself has none.</p>
+        <h2 class="subhead mono">Skills it may call</h2>
+        <div class="agent-skills" data-agent-skills></div>
+        <h2 class="subhead mono">Instructions</h2>
+        <pre class="agent-instructions agent-instructions-full" data-agent-instructions></pre>
+        <h2 class="subhead mono" data-agent-examples-head hidden>Example tasks</h2>
+        <ul class="agent-examples" data-agent-examples></ul>
+        <p class="fine">Instructions are written by the publisher and sent to the model as its system prompt. Packages are published by their authors and are not reviewed by Splice unless the publisher is <code>splice</code>.</p>
+      </div>
+      <p class="more"><a class="text-link" href="${href(config, loc, "agents")}">All agents ${ARROW}</a><a class="text-link" href="${href(config, loc, "docs/agents")}">How agent packages work ${ARROW}</a></p>
     </div>
   </section>`);
 }

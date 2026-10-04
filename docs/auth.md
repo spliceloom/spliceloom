@@ -76,6 +76,14 @@ npm run registry:admin -- set-owner splice dim     # assign the reserved @splice
 
 The admin API also accepts `namespaces`, `expiresInDays` and `canManage` when creating tokens.
 
+Moderation: `npm run registry:admin -- hide-package @ns/name` removes a package from search and from
+the listings on agents.spliceloom.com (`show-package` lists it again). A hidden package stays
+installable by its exact name, because published versions are immutable.
+
+Reserved names (`dim`, `spliceloom`, `official`, `admin`, `root`, `registry`, `support`, `security`,
+`staff`, `team`, `api`, `docs`, `www`) cannot be claimed by sign-up or by a first publish; an admin
+assigns them with `set-owner`.
+
 ### CLI credentials
 
 ```sh

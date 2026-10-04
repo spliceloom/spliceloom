@@ -9,6 +9,7 @@
  *   node apps/registry/dist/admin.js create-token <user> [label]
  *   node apps/registry/dist/admin.js revoke-token <token-id>
  *   node apps/registry/dist/admin.js set-owner <namespace> <user|--none>
+ *   node apps/registry/dist/admin.js hide-package <@ns/name> | show-package <@ns/name>
  *
  * Registry: --registry <url|alias> or SPLICE_REGISTRY (default: local = http://127.0.0.1:8787).
  */
@@ -24,6 +25,8 @@ Commands:
   create-token <user> [label]      Create an API token for a user (printed once)
   revoke-token <token-id>          Revoke a token
   set-owner <namespace> <user>     Assign a namespace owner (--none to clear)
+  hide-package <@ns/name>          Hide a package from search and listings (it stays installable by name)
+  show-package <@ns/name>          List a hidden package again
   migrate-artifacts                Copy artifacts from the legacy store (KV/R2) to GitHub Releases
 
 Environment: SPLICE_ADMIN_TOKEN (required for API commands), SPLICE_REGISTRY.`;
@@ -92,6 +95,14 @@ export async function runAdmin(argv: string[], env: NodeJS.ProcessEnv, out: (s: 
         out(`migrated: ${migrated.length > 0 ? migrated.join(", ") : "none"}`);
         if (skipped.length > 0) out(`skipped (missing or failed verification): ${skipped.join(", ")}`);
         return skipped.length > 0 ? 1 : 0;
+      }
+      case "hide-package":
+      case "show-package": {
+        const match = /^@([^/]+)\/([^/]+)$/.exec(rest[0] ?? "");
+        if (!match) break;
+        const result = await call("PUT", `/admin/packages/${encodeURIComponent(match[1]!)}/${encodeURIComponent(match[2]!)}/hidden`, { hidden: command === "hide-package" });
+        out(`${String(result.name)} is ${result.hidden ? "hidden from search" : "listed in search"}`);
+        return 0;
       }
       case "set-owner": {
         if (!rest[0] || !rest[1]) break;

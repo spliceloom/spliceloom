@@ -285,7 +285,7 @@ export class RegistryService {
     const pattern = `%${escapeLike(q)}%`;
     const rows = await this.db.all<PackageRow>(
       `SELECT * FROM packages
-       WHERE (id LIKE ? ESCAPE '\\' OR lower(description) LIKE ? ESCAPE '\\')${kind ? " AND kind = ?" : ""}
+       WHERE (id LIKE ? ESCAPE '\\' OR lower(description) LIKE ? ESCAPE '\\')${kind ? " AND kind = ?" : ""} AND hidden = 0
        ORDER BY CASE WHEN name = ? THEN 0 WHEN name LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END, id
        LIMIT ?`,
       [pattern, pattern, ...(kind ? [kind] : []), q, `${escapeLike(q)}%`, capped],
@@ -771,6 +771,13 @@ export class RegistryService {
     if (!row) throw new RegistryError("NOT_FOUND", 404, `Token ${id} not found`);
     if (!row.revoked_at) await this.db.run("UPDATE tokens SET revoked_at = ? WHERE id = ?", [this.now().toISOString(), id]);
     return { id, revoked: true };
+  }
+
+  /** Admin: hides a package from search (or shows it again). It stays installable by exact name. */
+  async setPackageHidden(idInput: string, hidden: boolean): Promise<{ name: string; hidden: boolean }> {
+    const row = await this.packageRow(idInput);
+    await this.db.run("UPDATE packages SET hidden = ? WHERE id = ?", [hidden ? 1 : 0, row.id]);
+    return { name: row.id, hidden };
   }
 
   /** Assigns (or clears, with null) the owner of a namespace. Creates the namespace if needed. */

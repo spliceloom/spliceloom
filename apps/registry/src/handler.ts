@@ -299,6 +299,11 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
           if (canManage !== undefined) opts.canManage = canManage;
           return json(await service.createToken(b, opts), 201);
         }
+        if (method === "PUT" && a === "packages" && b && c && d === "hidden" && n === 5) {
+          const hidden = optionalBoolean(await readJson(request), "hidden");
+          if (hidden === undefined) throw new RegistryError("BAD_REQUEST", 400, '"hidden" must be true or false');
+          return json(await service.setPackageHidden(formatPackageId(b, c), hidden));
+        }
         if (method === "POST" && a === "artifacts" && b === "migrate" && n === 3) {
           if (!options.legacyArtifacts) throw new RegistryError("BAD_REQUEST", 400, "No legacy artifact store is configured");
           return json(await service.migrateArtifacts(options.legacyArtifacts));
