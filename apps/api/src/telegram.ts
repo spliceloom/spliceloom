@@ -56,7 +56,7 @@ export async function telegramReply(text: string, chatId: string, deps: Telegram
         "$SPLICE on Robinhood Chain",
         `Price: ${usd(t.priceUsd ?? st.priceUsd)}   24h: ${pct(st.changePct?.h24)}`,
         `Market cap: ${usd(t.fdvUsd)}   Liquidity: ${usd(t.pool?.liquidityUsd)}`,
-        `Holders: ${t.holders ?? "n/a"}   Burned: ${t.burned?.pctOfSupply ?? "n/a"}%`,
+        `Holders: ${t.holders ?? "n/a"}   Burned: ${Number.isFinite(Number(t.burned?.pctOfSupply)) ? `${Number(t.burned.pctOfSupply).toFixed(2)}%` : "n/a"}`,
         `CA: ${t.address}`,
         "Live: spliceloom.com/token",
       ].join("\n");
