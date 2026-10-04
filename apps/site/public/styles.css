@@ -3694,6 +3694,9 @@ pre.code:hover .copy-button,
 .live-page .subhead {
   margin: 56px 0 14px;
 }
+.agents-steps {
+  margin-top: 22px;
+}
 .agents-steps .cap .code {
   margin-top: 12px;
 }

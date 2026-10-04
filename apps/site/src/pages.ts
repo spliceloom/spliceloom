@@ -1318,7 +1318,8 @@ export function renderAgents(config: SiteConfig, snapshot: RegistrySnapshot, ski
       <p class="section-lead">Publishing to the Splice registry is free. While the registry is in developer preview, publisher accounts are issued on request: open an issue on GitHub and you get a token for your own namespace.</p>
       <div class="cap-grid agents-steps">
         <article class="cap"><h3>1. Write</h3><p>A skill is a folder with a manifest, its tools and the permissions it needs.</p><a class="text-link" href="${link("docs/creating-a-skill")}">Creating a skill ${ARROW}</a></article>
-        <article class="cap"><h3>2. Check</h3><p>Validate and package it locally. Nothing leaves your machine.</p><pre class="code"><code>splice publish ./my-skill --dry-run</code></pre></article>
+        <article class="cap"><h3>2. Check</h3><p>Validate and package it locally. Nothing leaves your machine.</p><pre class="code"><code>cd my-skill
+splice publish --dry-run</code></pre></article>
         <article class="cap"><h3>3. Publish</h3><p>The first publish claims your namespace; versions are immutable.</p><pre class="code"><code>splice login
 splice publish ./my-skill</code></pre></article>
         <article class="cap"><h3>4. Sign</h3><p>Sign versions with your own key so installs can verify who published them.</p><pre class="code"><code>splice keys generate
