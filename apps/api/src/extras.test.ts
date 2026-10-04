@@ -151,3 +151,36 @@ describe("discord bot", () => {
     assert.equal(await discordReply("whales", "on", "5", deps, "Alex"), "Unknown command. See /help.");
   });
 });
+
+describe("agent directory", () => {
+  const item = (over: Record<string, unknown>) => ({ full_name: "acme/agent", description: "An agent", stargazers_count: 10, language: "TypeScript", license: { spdx_id: "MIT" }, pushed_at: "2026-10-01T00:00:00Z", topics: ["ai-agents"], ...over });
+
+  it("keeps public, original, maintained repositories and builds the link from the validated name", async () => {
+    const { directoryRepo } = await import("./extras.js");
+    assert.deepEqual(directoryRepo(item({})), { fullName: "acme/agent", description: "An agent", stars: 10, language: "TypeScript", license: "MIT", pushedAt: "2026-10-01T00:00:00Z", topics: ["ai-agents"], url: "https://github.com/acme/agent" });
+    assert.equal(directoryRepo(item({ fork: true })), null);
+    assert.equal(directoryRepo(item({ archived: true })), null);
+    assert.equal(directoryRepo(item({ full_name: "acme/agent\" onclick=\"x" })), null);
+    assert.equal(directoryRepo(item({ full_name: "https://evil.example/a/b" })), null);
+    assert.equal(directoryRepo(item({ license: { spdx_id: "NOASSERTION" } }))!.license, null);
+  });
+
+  it("merges a category's searches, most-starred first, and reports partial results", async () => {
+    const { agentDirectory, DIRECTORY_CATEGORIES } = await import("./extras.js");
+    const seen: string[] = [];
+    const fetcher: ExternalFetch = async (url, init) => {
+      const q = decodeURIComponent(new URL(url).searchParams.get("q") ?? "");
+      seen.push(q);
+      assert.equal((init?.headers as Record<string, string>).authorization, "Bearer t");
+      if (q.includes("claude-skills")) return new Response("limited", { status: 403 });
+      if (q.includes("agent-skills")) return Response.json({ items: [item({ full_name: "a/small", stargazers_count: 5 }), item({ full_name: "a/big", stargazers_count: 50 }), item({ full_name: "A/BIG", stargazers_count: 50 })] });
+      return Response.json({ items: [item({})] });
+    };
+    const d = (await agentDirectory(fetcher, "t")) as { categories: Array<{ key: string; repos: Array<{ fullName: string }> }>; source: { status: string } };
+    assert.equal(seen.length, DIRECTORY_CATEGORIES.reduce((n, c) => n + c.queries.length, 0));
+    assert.deepEqual(d.categories.find((c) => c.key === "skills")!.repos.map((r) => r.fullName), ["a/big", "a/small"]);
+    assert.equal(d.source.status, "PARTIAL");
+    const down = (await agentDirectory(async () => new Response("x", { status: 500 }))) as { source: { status: string } };
+    assert.equal(down.source.status, "UNAVAILABLE");
+  });
+});

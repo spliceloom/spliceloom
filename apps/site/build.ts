@@ -1,6 +1,7 @@
 /**
  * Builds the Splice website (static files, no runtime dependencies) for two hosts:
  *   apps/site/dist       the site — landing page (spliceloom.com)
+ *   apps/site/dist-agents  the agents host — the agent directory (agents.spliceloom.com)
  *   apps/site/dist-docs  the docs host — docs and skill pages (docs.spliceloom.com)
  *
  *   node apps/site/build.ts [--registry <url>] [--out <dir>] [--docs-out <dir>] [--site-url <url>]
@@ -15,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./src/markdown.ts";
-import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderBot, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
+import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderBot, renderAgents, DEFAULT_AGENTS_URL, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
 import { loadProviders } from "./src/providers.ts";
 import { loadSnapshot, type RegistrySnapshot, type SkillView } from "./src/registry.ts";
 import { BROKER_CAPABILITIES } from "../../packages/spec/dist/index.js";
@@ -163,6 +164,9 @@ export interface BuildResult {
   /** The docs host output (docs and skill pages). */
   docsOut: string;
   docsFiles: string[];
+  /** The agents host output (the agent directory). */
+  agentsOut: string;
+  agentsFiles: string[];
   snapshot: RegistrySnapshot;
 }
 
@@ -174,6 +178,9 @@ export interface BuildOptions {
   docsUrl: string;
   /** Public API for the live pages (default https://api.spliceloom.com). */
   api?: string;
+  /** Output directory and public URL of the agents host (defaults: dist-agents next to `out`, agents.spliceloom.com). */
+  agentsOut?: string;
+  agentsUrl?: string;
   snapshot?: RegistrySnapshot;
   verify?: boolean;
 }
@@ -241,7 +248,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   const snapshot = options.snapshot ?? (await loadSnapshot(options.registry, { verify: options.verify ?? true }));
   const assetHash = createHash("sha256");
   for (const name of ["styles.css", "app.js"]) assetHash.update(readFileSync(join(here, "public", name)));
-  const config: SiteConfig = { siteUrl: options.siteUrl, docsUrl: options.docsUrl, registry: snapshot.registry, githubUrl: GITHUB_URL, api: options.api ?? DEFAULT_API_URL, assetVersion: assetHash.digest("hex").slice(0, 10) };
+  const config: SiteConfig = { siteUrl: options.siteUrl, docsUrl: options.docsUrl, registry: snapshot.registry, githubUrl: GITHUB_URL, api: options.api ?? DEFAULT_API_URL, ...(options.agentsUrl ? { agentsUrl: options.agentsUrl } : {}), assetVersion: assetHash.digest("hex").slice(0, 10) };
   const siteBase = options.siteUrl.replace(/\/$/, "");
   const docsBase = options.docsUrl.replace(/\/$/, "");
 
@@ -314,7 +321,18 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   docs.write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${docsBase}/sitemap.xml\n`);
   docs.write("sitemap.xml", sitemap(docsBase, docPaths));
 
-  return { out: options.out, files: site.files.sort(), docsOut: options.docsOut, docsFiles: docs.files.sort(), snapshot };
+  // ---- the agents host: the agent directory at the root
+  const agentsOut = options.agentsOut ?? join(dirname(options.out), "dist-agents");
+  const agentsBase = (options.agentsUrl ?? DEFAULT_AGENTS_URL).replace(/\/$/, "");
+  const agents = outputDir(agentsOut);
+  agents.write("index.html", renderAgents(config, snapshot, SKILL_PAGES));
+  agents.write("404.html", renderNotFound(config, "agents"));
+  copyCommonAssets(agents);
+  agents.copy(join(here, "public", "og", "og-landing.png"), "assets/og-landing.png");
+  agents.write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${agentsBase}/sitemap.xml\n`);
+  agents.write("sitemap.xml", sitemap(agentsBase, [""]));
+
+  return { out: options.out, files: site.files.sort(), docsOut: options.docsOut, docsFiles: docs.files.sort(), agentsOut, agentsFiles: agents.files.sort(), snapshot };
 }
 
 /** Where a logical page path is published (for tests and tooling): host and file. */

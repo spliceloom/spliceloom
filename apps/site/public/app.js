@@ -1423,6 +1423,46 @@
     load(symbols[0]);
   };
 
+  // ------------------------------------------------------------------ agents host: open-source directory
+  const agents = async () => {
+    const card = root.querySelector('[data-table="agents"]');
+    const tabs = root.querySelector("[data-agents-tabs]");
+    const filter = root.querySelector("[data-agents-filter]");
+    let d;
+    try {
+      d = await getJson("/v1/agents");
+    } catch {
+      return message(card, "The directory is unavailable right now. Try again in a minute.");
+    }
+    const categories = d.categories.filter((c) => c.repos.length);
+    if (!categories.length) return message(card, "The directory is unavailable right now. Try again in a minute.");
+    let current = categories[0].key;
+    const draw = () => {
+      const q = filter.value.trim().toLowerCase();
+      for (const b of tabs.children) b.setAttribute("aria-pressed", String(b.dataset.key === current));
+      const repos = categories.find((c) => c.key === current).repos.filter((r) => !q || [r.fullName, r.description || "", r.language || "", ...r.topics].join(" ").toLowerCase().includes(q));
+      if (!repos.length) return message(card, "No repository matches that search.");
+      card.querySelector("tbody").replaceChildren(...repos.map((r) => {
+        // Only links to github.com are followed.
+        const name = typeof r.url === "string" && r.url.startsWith("https://github.com/") ? Object.assign(el("a", r.fullName, "text-link"), { href: r.url, target: "_blank", rel: "noopener noreferrer" }) : el("span", r.fullName);
+        return row([{ node: name }, { text: r.description || "—" }, { text: compact(r.stars) }, { text: r.language || "—" }, { text: r.license || "—" }, { text: r.pushedAt ? ago(r.pushedAt) : "—" }]);
+      }));
+    };
+    tabs.replaceChildren(...categories.map((c) => {
+      const b = el("button", `${c.label} · ${c.repos.length}`, "tf");
+      b.type = "button";
+      b.dataset.key = c.key;
+      b.addEventListener("click", () => {
+        current = c.key;
+        draw();
+      });
+      return b;
+    }));
+    filter.addEventListener("input", draw);
+    draw();
+    card.querySelector("[data-source]").textContent = `${src(d.source)} · updated ${ago(d.updatedAt)}`;
+  };
+
   // ------------------------------------------------------------------ /live: prediction markets
   const odds = async () => {
     const card = root.querySelector('[data-table="odds"]');
@@ -1655,6 +1695,7 @@
   const start = () => {
     if (kind === "stocks") stocks();
     else if (kind === "chain") odds();
+    else if (kind === "agents") agents();
     else if (kind === "screener") screener();
     else if (kind === "wallet") wallet();
     else if (kind === "explain") explain();

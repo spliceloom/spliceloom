@@ -1,12 +1,13 @@
 /**
  * Keyless public sources next to the chain data: SEC EDGAR filings for the companies behind stock
- * tokens, and Polymarket odds on macro and stock events. Requests go to the hosts listed here only.
+ * tokens, Polymarket odds on macro and stock events, and GitHub's repository search for the agent
+ * directory. Requests go to the hosts listed here only.
  * Titles and descriptions are third-party text: they are passed through as plain strings and never
  * interpreted. A source that fails is reported as unavailable, never filled in.
  */
 export type ExternalFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-const HOSTS = new Set(["data.sec.gov", "www.sec.gov", "gamma-api.polymarket.com"]);
+const HOSTS = new Set(["data.sec.gov", "www.sec.gov", "gamma-api.polymarket.com", "api.github.com"]);
 /** SEC asks automated clients to identify themselves in the User-Agent. */
 export const SEC_USER_AGENT = "Splice/1.0 (+https://spliceloom.com)";
 
@@ -218,4 +219,74 @@ export async function predictionOdds(fetcher: ExternalFetch, symbols: string[] =
   const stockEvents = unique((stocks ?? []).filter((e) => [...clean(e.title, 120).matchAll(/\(([A-Z.]{1,6})\)/g)].some((m) => wanted.has(m[1]!)))).slice(0, 5);
   const ok = stocks !== null || macroPages.some((p) => p !== null);
   return { macro, stocks: stockEvents, source: { status: ok ? "LIVE" : "UNAVAILABLE", source: "polymarket", fetchedAt: new Date().toISOString() }, note: "Prices of prediction-market contracts (Polymarket), read as probabilities. Not a forecast and not financial advice." };
+}
+
+// ------------------------------------------------------------------------------ agent directory
+
+export interface DirectoryRepo {
+  fullName: string;
+  description: string | null;
+  stars: number;
+  language: string | null;
+  license: string | null;
+  pushedAt: string | null;
+  topics: string[];
+  url: string;
+}
+
+/** Categories of the open-source directory: GitHub topic searches, most-starred first. */
+export const DIRECTORY_CATEGORIES: Array<{ key: string; label: string; queries: string[] }> = [
+  { key: "agents", label: "Agents and frameworks", queries: ["topic:ai-agents stars:>=5000"] },
+  { key: "mcp", label: "MCP servers", queries: ["topic:mcp-server stars:>=2000"] },
+  { key: "skills", label: "Agent skills", queries: ["topic:agent-skills stars:>=1000", "topic:claude-skills stars:>=1000"] },
+  { key: "onchain", label: "Onchain", queries: ["topic:ai-agents topic:web3 stars:>=300", "topic:mcp-server topic:blockchain stars:>=300", "topic:ai-agents topic:crypto stars:>=300"] },
+];
+
+const REPO_NAME = /^[\w.-]{1,100}\/[\w.-]{1,100}$/;
+
+export function directoryRepo(raw: unknown): DirectoryRepo | null {
+  const r = (raw ?? {}) as { full_name?: unknown; description?: unknown; stargazers_count?: unknown; language?: unknown; license?: { spdx_id?: unknown } | null; pushed_at?: unknown; topics?: unknown; fork?: unknown; archived?: unknown; private?: unknown };
+  const fullName = clean(r.full_name, 201);
+  const stars = Number(r.stargazers_count);
+  if (!REPO_NAME.test(fullName) || !Number.isFinite(stars) || r.fork === true || r.archived === true || r.private === true) return null;
+  const license = clean(r.license?.spdx_id, 30);
+  return {
+    fullName,
+    description: clean(r.description, 200) || null,
+    stars,
+    language: clean(r.language, 30) || null,
+    license: license && license !== "NOASSERTION" ? license : null,
+    pushedAt: clean(r.pushed_at, 30) || null,
+    topics: Array.isArray(r.topics) ? r.topics.map((t) => clean(t, 40)).filter(Boolean).slice(0, 8) : [],
+    // The link is built from the validated owner/name, never taken from the response.
+    url: `https://github.com/${fullName}`,
+  };
+}
+
+/**
+ * Open-source agents, MCP servers and skills on GitHub, by topic and stars. Repositories are listed
+ * automatically; nothing here is reviewed. `token` (optional) raises GitHub's search rate limit.
+ */
+export async function agentDirectory(fetcher: ExternalFetch, token?: string, perCategory = 30): Promise<Record<string, unknown>> {
+  const headers: Record<string, string> = { "user-agent": SEC_USER_AGENT, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", ...(token ? { authorization: `Bearer ${token}` } : {}) };
+  let failed = 0;
+  const categories = [];
+  for (const c of DIRECTORY_CATEGORIES) {
+    const seen = new Map<string, DirectoryRepo>();
+    // One request at a time: GitHub's search API allows few requests per minute.
+    for (const q of c.queries) {
+      try {
+        const j = (await getJson(fetcher, `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=${perCategory}`, headers)) as { items?: unknown[] };
+        for (const item of j.items ?? []) {
+          const repo = directoryRepo(item);
+          if (repo && !seen.has(repo.fullName.toLowerCase())) seen.set(repo.fullName.toLowerCase(), repo);
+        }
+      } catch {
+        failed++;
+      }
+    }
+    categories.push({ key: c.key, label: c.label, repos: [...seen.values()].sort((a, b) => b.stars - a.stars).slice(0, perCategory) });
+  }
+  const filled = categories.filter((c) => c.repos.length > 0).length;
+  return { categories, source: { status: filled === 0 ? "UNAVAILABLE" : failed ? "PARTIAL" : "LIVE", source: "github", fetchedAt: new Date().toISOString() }, note: "Listed automatically from GitHub by topic and stars. Not reviewed or endorsed by Splice." };
 }

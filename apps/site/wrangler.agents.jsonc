@@ -1,0 +1,13 @@
+// Agents host (apps/site/dist-agents) on Cloudflare Workers static assets.
+// Build first: node apps/site/build.ts   (writes dist/, dist-docs/ and dist-agents/)
+{
+  "name": "splice-agents",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "agents.spliceloom.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist-agents",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

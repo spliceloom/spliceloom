@@ -3675,6 +3675,28 @@ pre.code:hover .copy-button,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.live-card[data-table="agents"] > table td {
+  white-space: normal;
+  vertical-align: top;
+}
+.live-card[data-table="agents"] > table td:first-child {
+  overflow-wrap: anywhere;
+}
+.live-card[data-table="agents"] > table td:nth-child(2) {
+  color: var(--text-2);
+}
+.live-card[data-table="agents"] > table th:nth-child(1) {
+  width: 24%;
+}
+.live-card[data-table="agents"] > table th:nth-child(2) {
+  width: 40%;
+}
+.live-page .subhead {
+  margin: 56px 0 14px;
+}
+.agents-steps .cap .code {
+  margin-top: 12px;
+}
 .fine + .live-card {
   margin-top: 28px;
 }

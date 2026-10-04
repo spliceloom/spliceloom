@@ -11,7 +11,7 @@ import { isLive, type AiMessage, type Composite, type DataResult, type SpliceDat
 import { agentSystemPrompt, runAgentTurn } from "@spliceloom/mcp/agent";
 import { contractFacts, explainContract, screener, stockPremiums, walletSummary } from "./features.js";
 import { handleDiscordInteraction, verifyDiscordSignature } from "./discord.js";
-import { TICKER, predictionOdds, secFilings, secTickers, type ExternalFetch } from "./extras.js";
+import { TICKER, agentDirectory, predictionOdds, secFilings, secTickers, type ExternalFetch } from "./extras.js";
 import { HOLDER_MIN_TOKENS, holderMessage, issuePass, readPass, verifyHolderSignature } from "./holder.js";
 import { handleTelegramUpdate, type AlertStore, type TelegramDeps } from "./telegram.js";
 
@@ -50,6 +50,8 @@ export interface ApiOptions {
   alerts?: AlertStore;
   /** Fetch for the keyless public sources (SEC EDGAR, Polymarket) and Discord replies. Those features are off without it. */
   fetch?: ExternalFetch;
+  /** Optional GitHub token for the agent directory (raises the search rate limit). */
+  githubToken?: string;
   /** The Discord application's public key (hex). The Discord bot is off without it. */
   discordPublicKey?: string;
   /** Global JSON cache and background tasks (token market data). */
@@ -388,7 +390,7 @@ async function sha256(text: string): Promise<string> {
 }
 
 /** The cached data sources shared by the HTTP routes, the Telegram bot and the scheduled alerts. */
-export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "background" | "fetch">) {
+export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "background" | "fetch" | "githubToken">) {
   const cacheCtx = (): CacheContext => ({ ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) });
   const stamp = <T extends Record<string, unknown>>(r: { value: T; at: number }) => ({ ...r.value, updatedAt: new Date(r.at).toISOString() });
   const external = (): ExternalFetch => {
@@ -415,6 +417,8 @@ export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "backgro
           (v) => (v.source as { status: string }).status === "LIVE",
         ),
       ),
+    /** Open-source agents, MCP servers and skills from GitHub; refreshed every 6 hours. */
+    agents: async () => stamp(await cachedJson(cacheCtx(), "agents:v1", 6 * 3_600_000, () => agentDirectory(external(), options.githubToken), (v) => (v.source as { status: string }).status === "LIVE", 7 * 86_400_000)),
     /** Latest SEC filings of a ticker; null when SEC lists no filer for it. */
     filings: async (symbol: string) => {
       const tickers = (await cachedJson(cacheCtx(), "sec:tickers:v1", 7 * 86_400_000, () => secTickers(external()), (v) => Object.keys(v).length > 1000)).value;
@@ -543,6 +547,10 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       if (get && url.pathname === "/v1/stocks") return json(await sources.stocks(), 200, origin, { "cache-control": "public, max-age=60" });
       if (get && url.pathname === "/v1/screener") return json(await sources.screener(), 200, origin, { "cache-control": "public, max-age=60" });
 
+      if (get && url.pathname === "/v1/agents") {
+        const a = await sources.agents();
+        return json(a, 200, origin, (a.source as { status: string }).status === "UNAVAILABLE" ? noStore : { "cache-control": "public, max-age=600" });
+      }
       if (get && url.pathname === "/v1/odds") {
         const o = await sources.odds();
         // An unavailable result is not cached at the edge.

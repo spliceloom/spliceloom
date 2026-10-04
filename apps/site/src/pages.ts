@@ -14,11 +14,15 @@ import type { RegistrySnapshot, SkillView } from "./registry.ts";
 /** The official $SPLICE contract address, as announced on @spliceloom. */
 export const TOKEN_CA = "0xe61717414b34d1f5a1E17F5a91a980A1f4Ef2806";
 
+export const DEFAULT_AGENTS_URL = "https://agents.spliceloom.com";
+
 export interface SiteConfig {
   /** Public base URL of the site (canonical links, sitemap, Open Graph). */
   siteUrl: string;
   /** Public base URL of the documentation host (docs and skill pages live there). */
   docsUrl: string;
+  /** Public base URL of the agents host (the agent directory). */
+  agentsUrl?: string;
   /** Registry API base URL used for live data in the browser. */
   registry: string;
   /** Public API (live chain data, the token, Ask) used by the live pages in the browser. */
@@ -44,13 +48,14 @@ export interface LandingData {
 const e = escapeHtml;
 
 /**
- * Two hosts: the site (landing) and the docs host (docs and skill pages). Templates use logical
+ * Three hosts: the site (landing), the docs host (docs and skill pages) and the agents host (the
+ * agent directory at its root, logical path `agents`). Templates use logical
  * paths — "" (home), `docs/<slug>`, `skills/<name>`, `assets/…` — and `href` turns them into clean
  * URLs: relative on the same host (`quickstart`, `../skills/json`), absolute across hosts
  * (`https://docs.spliceloom.com/quickstart`). Never `.html` or `#`: sections are reached through
  * `data-section`, scrolled to by app.js without changing the URL.
  */
-export type Host = "site" | "docs";
+export type Host = "site" | "docs" | "agents";
 export interface PageLoc {
   host: Host;
   /** Directory of the page on its host ("", "skills" or "blog"; one level deep). */
@@ -62,13 +67,14 @@ export interface PageLoc {
 /** The host a logical path belongs to (null: the page's own host) and its path there. */
 export function placeOf(path: string): { host: Host | null; local: string } {
   if (path === "docs" || path === "docs/introduction") return { host: "docs", local: "" };
+  if (path === "agents") return { host: "agents", local: "" };
   if (path.startsWith("docs/")) return { host: "docs", local: path.slice("docs/".length) };
   if (path.startsWith("skills/")) return { host: "docs", local: path };
   if (path.startsWith("assets/") || path === "favicon.svg") return { host: null, local: path };
   return { host: "site", local: path };
 }
 
-const baseOf = (config: SiteConfig, host: Host) => (host === "docs" ? config.docsUrl : config.siteUrl).replace(/\/$/, "");
+const baseOf = (config: SiteConfig, host: Host) => (host === "docs" ? config.docsUrl : host === "agents" ? (config.agentsUrl ?? DEFAULT_AGENTS_URL) : config.siteUrl).replace(/\/$/, "");
 
 export function href(config: SiteConfig, loc: PageLoc, path: string): string {
   const place = placeOf(path);
@@ -174,7 +180,7 @@ function footer(loc: PageLoc, config: SiteConfig): string {
       <nav class="footer-cols" aria-label="Footer">
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
-        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "widgets")}">Widgets</a><a href="${href(config, loc, "bot")}">Telegram bot</a></div>
+        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "widgets")}">Widgets</a><a href="${href(config, loc, "bot")}">Telegram bot</a><a href="${href(config, loc, "agents")}">Agent directory</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
         <div><h2>Project</h2><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
@@ -1275,6 +1281,54 @@ export function renderEmbed(config: SiteConfig): string {
 }
 
 /** How to embed the $SPLICE card. */
+/**
+ * The agents host: official skills from the registry (rendered at build time) and the open-source
+ * directory (filled in the browser from the public API).
+ */
+export function renderAgents(config: SiteConfig, snapshot: RegistrySnapshot, skillPages: string[]): string {
+  const loc: PageLoc = { host: "agents", dir: "" };
+  const link = (p: string) => href(config, loc, p);
+  const cards = snapshot.skills.map((s) => {
+    const install = `splice add ${s.id}${s.permissionSummary[0]?.startsWith("none") ? "" : " --accept-permissions"}`;
+    return `<div class="registry-item">${skillCard(s, link, skillPages.includes(s.name))}<div class="install-row"><code>${e(install)}</code><button type="button" class="copy-inline" data-copy="${e(install)}">Copy</button></div></div>`;
+  });
+  return sitePage(config, loc, { title: "Agent directory — Splice", description: "Skills, agents and MCP servers in one place: verified Splice skills you can install, an open-source directory from GitHub, and free publishing to the Splice registry.", path: "", bodyClass: "live-page registry-page" }, `
+  <section class="section" data-live="agents" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Agent directory</p><h1 class="display">Capabilities for agents, in one place.</h1></div>
+        <p class="section-lead">Verified skills you can install with one command, an open-source directory of agents, MCP servers and skills, and free publishing to the Splice registry. Browsing needs no account, and nothing here costs anything.</p>
+      </div>
+
+      <h2 class="subhead mono">Open-source directory</h2>
+      <div class="screener-filters">
+        <div class="tf-switch" data-agents-tabs role="group" aria-label="Category"></div>
+        <label class="registry-search"><span class="mono">Search</span><input type="search" placeholder="name, topic, language…" data-agents-filter autocomplete="off" spellcheck="false" aria-label="Search the directory"></label>
+      </div>
+      <div class="live-card" data-table="agents"><table><thead><tr><th>Repository</th><th>What it is</th><th>Stars</th><th>Language</th><th>License</th><th>Updated</th></tr></thead><tbody><tr><td colspan="6" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>
+      <p class="fine">Repositories are listed automatically from GitHub by topic and stars and refreshed every few hours. They are not reviewed or endorsed by Splice: read the code and its license before you run it.</p>
+
+      <h2 class="subhead mono">On Splice · official skills</h2>
+      <p class="section-lead">Each one is signed, checked by <code>splice verify</code>, and declares the permissions it needs before it runs.</p>
+      <div class="skill-grid registry-grid">
+        ${cards.join("\n        ")}
+      </div>
+
+      <h2 class="subhead mono">Publish yours</h2>
+      <p class="section-lead">Publishing to the Splice registry is free. While the registry is in developer preview, publisher accounts are issued on request: open an issue on GitHub and you get a token for your own namespace.</p>
+      <div class="cap-grid agents-steps">
+        <article class="cap"><h3>1. Write</h3><p>A skill is a folder with a manifest, its tools and the permissions it needs.</p><a class="text-link" href="${link("docs/creating-a-skill")}">Creating a skill ${ARROW}</a></article>
+        <article class="cap"><h3>2. Check</h3><p>Validate and package it locally. Nothing leaves your machine.</p><pre class="code"><code>splice publish ./my-skill --dry-run</code></pre></article>
+        <article class="cap"><h3>3. Publish</h3><p>The first publish claims your namespace; versions are immutable.</p><pre class="code"><code>splice login
+splice publish ./my-skill</code></pre></article>
+        <article class="cap"><h3>4. Sign</h3><p>Sign versions with your own key so installs can verify who published them.</p><pre class="code"><code>splice keys generate
+splice publish --sign</code></pre></article>
+      </div>
+      <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${e(config.githubUrl)}/issues" rel="noopener">Request a publisher account ${ARROW}</a></p>
+    </div>
+  </section>`);
+}
+
 /** The Telegram bot: what it answers and which alerts it sends. */
 export function renderBot(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };

@@ -37,7 +37,7 @@ export interface Env {
   [key: string]: unknown;
 }
 
-const DEFAULT_ORIGINS = ["https://spliceloom.com", "https://www.spliceloom.com", "https://docs.spliceloom.com"];
+const DEFAULT_ORIGINS = ["https://spliceloom.com", "https://www.spliceloom.com", "https://docs.spliceloom.com", "https://agents.spliceloom.com"];
 
 function d1Counters(db: D1Like): Counters {
   let ready: Promise<unknown> | undefined;
@@ -138,11 +138,12 @@ export default {
     if (typeof env.HOLDER_SECRET === "string" && env.HOLDER_SECRET.length >= 32) options.holderSecret = env.HOLDER_SECRET;
     if (typeof env.TELEGRAM_WEBHOOK_SECRET === "string" && env.TELEGRAM_WEBHOOK_SECRET.length >= 16) options.telegramSecret = env.TELEGRAM_WEBHOOK_SECRET;
     if (typeof env.DISCORD_PUBLIC_KEY === "string" && /^[0-9a-f]{64}$/i.test(env.DISCORD_PUBLIC_KEY)) options.discordPublicKey = env.DISCORD_PUBLIC_KEY;
+    if (typeof env.GITHUB_TOKEN === "string" && env.GITHUB_TOKEN) options.githubToken = env.GITHUB_TOKEN;
     const handle = createApiHandler(options);
     const client = request.headers.get("cf-connecting-ip") ?? "unknown";
 
     // Edge cache for public GETs (keyed by URL only; the Origin header only changes CORS).
-    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener", "/v1/odds"].includes(new URL(request.url).pathname);
+    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener", "/v1/odds", "/v1/agents"].includes(new URL(request.url).pathname);
     if (!cacheable) return handle(request, client);
     const cache = (globalThis as { caches?: { default?: CacheLike } }).caches?.default;
     if (!cache) return handle(request, client);
