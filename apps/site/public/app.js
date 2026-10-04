@@ -944,6 +944,28 @@
       });
     }
 
+    // ---- transparency (deployer, launch curve, burned, holders) from the token contract
+    const tp = d.transparency || {};
+    const devEl = root.querySelector("[data-tp-dev]");
+    if (tp.deployer) {
+      const bal = num(tp.deployer.balance);
+      devEl.textContent = Number.isFinite(bal) ? (bal === 0 ? "0 SPLICE (0%)" : `${compact(bal)} SPLICE (${num(tp.deployer.pctOfSupply).toFixed(2)}%)`) : "unavailable";
+      devEl.className = bal === 0 ? "up" : "";
+      root.querySelector("[data-tp-dev-addr]").textContent = tp.deployer.address;
+    } else devEl.textContent = "unavailable";
+    const shares = [["curve", tp.curve ? tp.curve.pctOfSupply : null], ["holders", tp.holdersPct], ["burn", tp.burnedPct]];
+    let x = 0;
+    for (const [k, v] of shares) {
+      const n = num(v);
+      root.querySelector(`[data-tp-${k}]`).textContent = Number.isFinite(n) ? `${n.toFixed(2)}%` : "—";
+      const rect = root.querySelector(`[data-tp-bar-${k}]`);
+      if (Number.isFinite(n)) {
+        rect.setAttribute("x", String(x));
+        rect.setAttribute("width", String(n * 10));
+        x += n * 10;
+      }
+    }
+
     // ---- holders
     const holderList = root.querySelector("[data-holders]");
     const top = d.topHolders || [];

@@ -68,6 +68,9 @@ const pad32 = (address: string) => address.toLowerCase().replace(/^0x/, "").padS
 /** The main $SPLICE pool (SPLICE / WETH, constant-product pair on pons-v2). */
 export const TOKEN_POOL = "0x9f9149e9aad34b75e77f0ae1023f8734706ca47e";
 const GET_RESERVES = "0x0902f1ac";
+/** PonsV2LauncherToken getters: deployer() and curve() (the launch pool). */
+const DEPLOYER = "0xd5f39488";
+const CURVE = "0x7165485d";
 
 /** Global cache shared by every data center (D1 in the Worker). */
 export interface JsonCache {
@@ -219,13 +222,15 @@ export async function tokenLive(data: SpliceData, ctx: CacheContext = {}): Promi
 }
 
 export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Promise<Record<string, unknown>> {
-  const [token, reserves, poolBalance, eth, market, hourly, ...burns] = await Promise.all([
+  const [token, reserves, poolBalance, eth, market, hourly, deployerCall, curveCall, ...burns] = await Promise.all([
     data.onchain.token(TOKEN_CA),
     data.onchain.call(TOKEN_POOL, GET_RESERVES),
     data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(TOKEN_POOL)),
     data.oracle.price("ETH"),
     cachedJson(ctx, "codex:token:v4", CODEX_TTL_MS, () => codexMarket(data), (v) => v.stats !== null, 45 * 60_000),
     cachedJson(ctx, "codex:token:1h:v1", CODEX_HOURLY_TTL_MS, () => codexHourly(data), (v) => v.chart.length > 0, 90 * 60_000),
+    data.onchain.call(TOKEN_CA, DEPLOYER),
+    data.onchain.call(TOKEN_CA, CURVE),
     ...BURN_ADDRESSES.map((a) => data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(a))),
   ]);
   const sections = "sections" in token ? (token.sections as Record<string, DataResult<any>>) : {};
@@ -267,9 +272,33 @@ export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Pr
       liquidityUsd: Number.isFinite(ethUsd) ? 2 * wethAmount * ethUsd : null,
     };
   }
+  // Transparency: the deployer and the launch curve, both read from the token contract itself.
+  const addressOf = (r: unknown) => {
+    const word = live<{ result: string }>(r)?.result;
+    return word && word.length >= 42 ? `0x${word.slice(-40)}` : null;
+  };
+  const deployer = addressOf(deployerCall);
+  const curve = addressOf(curveCall);
+  const balanceOf = async (a: string | null) => {
+    if (!a) return { raw: undefined as bigint | undefined, section: { status: "UNAVAILABLE" } as Section };
+    const r = await data.onchain.call(TOKEN_CA, BALANCE_OF + pad32(a));
+    const v = live<{ result: string }>(r)?.result;
+    return { raw: v ? BigInt(v) : undefined, section: section(r) };
+  };
+  const [deployerBal, curveBal] = await Promise.all([balanceOf(deployer), balanceOf(curve)]);
+  const curvePct = curveBal.raw !== undefined ? pct(curveBal.raw) : null;
+  const burnedPct = burnedRaw !== undefined ? pct(burnedRaw) : null;
+  const transparency = {
+    deployer: deployer ? { address: deployer, balance: deployerBal.raw !== undefined ? formatUnits(deployerBal.raw, decimals) : null, pctOfSupply: deployerBal.raw !== undefined ? pct(deployerBal.raw) : null, ...deployerBal.section } : null,
+    curve: curve ? { address: curve, isMainPool: curve.toLowerCase() === TOKEN_POOL, balance: curveBal.raw !== undefined ? formatUnits(curveBal.raw, decimals) : null, pctOfSupply: curvePct, ...curveBal.section } : null,
+    burnedPct,
+    holdersPct: curvePct !== null && burnedPct !== null ? Math.max(0, Math.round((100 - curvePct - burnedPct) * 10_000) / 10_000) : null,
+    contract: { verified: "PonsV2LauncherToken", functions: ["deployer()", "curve()", "balanceOf(address)", "burn(uint256)"] },
+  };
   const priceUsd = (pool?.priceUsd as number | null | undefined) ?? null;
   const supplyNum = supply ? Number(supply.formatted) : null;
-  const labels: Record<string, string> = { [TOKEN_POOL]: "Liquidity pool (SPLICE / WETH)", [BURN_ADDRESSES[0]!.toLowerCase()]: "Burn address (dead)", [BURN_ADDRESSES[1]!]: "Zero address" };
+  const labels: Record<string, string> = { [TOKEN_POOL]: "Launch curve / pool (SPLICE / WETH)", [BURN_ADDRESSES[0]!.toLowerCase()]: "Burn address (dead)", [BURN_ADDRESSES[1]!]: "Zero address" };
+  if (deployer) labels[deployer.toLowerCase()] = "Dev wallet (deployer)";
   return {
     address: TOKEN_CA,
     chain: "robinhood",
@@ -287,6 +316,7 @@ export async function tokenSummary(data: SpliceData, ctx: CacheContext = {}): Pr
       pctOfSupply: burnedRaw !== undefined ? pct(burnedRaw) : null,
       addresses: burnRows.map((b) => ({ address: b.address, amount: b.raw !== undefined ? formatUnits(b.raw, decimals) : null, ...b.section })),
     },
+    transparency,
     topHolders: (holders?.top ?? []).map((h) => ({ address: h.address, amount: formatUnits(BigInt(h.value), decimals), pctOfSupply: pct(BigInt(h.value)), label: labels[h.address.toLowerCase()] ?? null })),
     market: { ...market.value, chartHourly: hourly.value.chart, updatedAt: new Date(market.at).toISOString(), hourlyUpdatedAt: new Date(hourly.at).toISOString() },
     sources: {
@@ -360,7 +390,7 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       if (request.method === "GET" && url.pathname === "/v1/token") {
         const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
         // The whole summary is served from the global cache too, so no visitor waits for slow providers.
-        const summary = await cachedJson(ctx, "token:summary:v2", 60_000, () => tokenSummary(options.data(), ctx), (v) => v.priceUsd !== null);
+        const summary = await cachedJson(ctx, "token:summary:v3", 60_000, () => tokenSummary(options.data(), ctx), (v) => v.priceUsd !== null);
         return json(summary.value, 200, origin, { "cache-control": "public, max-age=30" });
       }
       if (request.method === "GET" && url.pathname === "/v1/token/live") {

@@ -1054,6 +1054,19 @@ export function renderToken(config: SiteConfig): string {
             <p class="card-source mono" data-win-source></p>
           </div>
 
+          <div class="live-card transparency-card">
+            <h2>Transparency <span class="mono muted">read from the contract</span></h2>
+            <div class="tp-dev"><span>Dev wallet (deployer)</span><strong data-tp-dev>—</strong></div>
+            <code class="tp-addr" data-tp-dev-addr></code>
+            <svg class="tp-bar" viewBox="0 0 1000 10" preserveAspectRatio="none" aria-hidden="true"><rect class="tp-curve" data-tp-bar-curve x="0" width="0" height="10"/><rect class="tp-holders" data-tp-bar-holders x="0" width="0" height="10"/><rect class="tp-burn" data-tp-bar-burn x="0" width="0" height="10"/></svg>
+            <ul class="tp-legend">
+              <li><i class="tp-curve"></i><span>Launch curve (pool)</span><strong data-tp-curve>—</strong></li>
+              <li><i class="tp-holders"></i><span>Holders</span><strong data-tp-holders>—</strong></li>
+              <li><i class="tp-burn"></i><span>Burned</span><strong data-tp-burn>—</strong></li>
+            </ul>
+            <p class="fine">Live from the token contract: <code>deployer()</code> and <code>curve()</code>, then <code>balanceOf</code>. The curve is the Pons launch pool; its source is not verified on Blockscout, so this page makes no claim about how its liquidity can be used.</p>
+          </div>
+
           <div class="live-card side-grid">
             ${side("fdvUsd", "FDV")}
             ${side("liquidityUsd", "Liquidity")}
