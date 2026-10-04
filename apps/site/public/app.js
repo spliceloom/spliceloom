@@ -1184,7 +1184,7 @@
       answer.replaceChildren();
       meta.textContent = "";
       try {
-        const r = await fetch(`${api}/v1/ask`, { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ question }) });
+        const r = await fetch(`${api}/v1/ask`, { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, pass: (window.spliceHolder && window.spliceHolder.pass()) || undefined }) });
         const body = await r.json().catch(() => ({}));
         if (!r.ok) {
           calls.replaceChildren();
@@ -1219,4 +1219,392 @@
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
   else run();
+})();
+// Tool pages (/stocks, /screener, /wallet, /explain), the embeddable card and holder access.
+(() => {
+  "use strict";
+  const root = document.querySelector("[data-live]");
+  const api = root ? (root.getAttribute("data-api") || "").replace(/\/$/, "") : "";
+  const kind = root ? root.getAttribute("data-live") : "";
+  const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  const usd = (v) => {
+    const n = num(v);
+    if (!Number.isFinite(n)) return "—";
+    if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+    if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+    if (Math.abs(n) >= 1e4) return `$${(n / 1e3).toFixed(1)}K`;
+    if (Math.abs(n) >= 1) return `$${n.toFixed(2)}`;
+    if (n === 0) return "$0";
+    return `$${n.toPrecision(4)}`;
+  };
+  const compact = (v) => {
+    const n = num(v);
+    if (!Number.isFinite(n)) return "—";
+    if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+    if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+    if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+    if (n !== 0 && Math.abs(n) < 0.001) return n.toPrecision(2);
+    return n.toFixed(n < 10 ? 3 : 0);
+  };
+  const pct = (v, digits = 2) => {
+    const n = num(v);
+    return Number.isFinite(n) ? `${n > 0 ? "+" : ""}${n.toFixed(digits)}%` : "—";
+  };
+  const ago = (iso) => {
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return "";
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : s < 172800 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
+  };
+  const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
+  const src = (s) => (!s ? "" : s.status === "LIVE" || s.status === "CACHED" ? `${s.status} · ${s.source || "?"}${s.fetchedAt ? ` · ${ago(s.fetchedAt)}` : ""}` : `${s.status}${s.reason ? ` · ${s.reason}` : ""}`);
+  const el = (tag, text, cls) => {
+    const n = document.createElement(tag);
+    if (text !== undefined) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  };
+  const row = (cells) => {
+    const tr = el("tr");
+    for (const c of cells) {
+      const td = el("td", c.text, c.cls);
+      if (c.node) td.replaceChildren(c.node);
+      if (c.title) td.title = c.title;
+      if (c.tone !== undefined && Number.isFinite(num(c.tone)) && num(c.tone) !== 0) td.classList.add(num(c.tone) > 0 ? "up" : "down");
+      tr.append(td);
+    }
+    return tr;
+  };
+  const message = (card, text) => {
+    const body = card.querySelector("tbody");
+    const tr = el("tr");
+    const td = el("td", text, "muted");
+    td.colSpan = card.querySelectorAll("th").length;
+    tr.append(td);
+    body.replaceChildren(tr);
+  };
+  const getJson = async (path, init) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 45000);
+    try {
+      const r = await fetch(`${api}${path}`, { credentials: "omit", signal: ctrl.signal, ...init });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw Object.assign(new Error(body.message || String(r.status)), { body });
+      return body;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const flagChips = (flags) => {
+    const wrap = el("span", undefined, "chips");
+    if (!flags) wrap.append(el("span", "security n/a", "chip"));
+    else for (const f of flags) wrap.append(el("span", f.text, `chip ${f.level === "ok" ? "chip-ok" : f.level === "danger" ? "chip-danger" : "chip-warn"}`));
+    return wrap;
+  };
+
+  // ------------------------------------------------------------------ holder access (used by /ask and /explain)
+  const KEY = "splice.holder";
+  const read = () => {
+    try {
+      const v = JSON.parse(localStorage.getItem(KEY) || "null");
+      return v && Date.parse(v.expiresAt) > Date.now() ? v : null;
+    } catch {
+      return null;
+    }
+  };
+  window.spliceHolder = { pass: () => (read() ? read().pass : null) };
+  const holderBox = document.querySelector("[data-holder]");
+  if (holderBox && api) {
+    const button = holderBox.querySelector("[data-holder-connect]");
+    const status = holderBox.querySelector("[data-holder-status]");
+    const show = () => {
+      const h = read();
+      if (h) {
+        status.textContent = `Holder access active for ${short(h.address)} · ${h.dailyQuestions} questions a day · until ${new Date(h.expiresAt).toLocaleString()}`;
+        status.classList.add("up");
+        button.textContent = "Disconnect";
+      } else button.textContent = "Connect wallet";
+    };
+    show();
+    button.addEventListener("click", async () => {
+      if (read()) {
+        try {
+          localStorage.removeItem(KEY);
+        } catch {
+          /* storage unavailable */
+        }
+        status.classList.remove("up");
+        status.textContent = "Disconnected.";
+        return show();
+      }
+      if (!window.ethereum) {
+        status.textContent = "No wallet found in this browser. Open this page in a browser with a wallet (for example MetaMask or Robinhood Wallet).";
+        return;
+      }
+      button.disabled = true;
+      try {
+        const [address] = await window.ethereum.request({ method: "eth_requestAccounts" });
+        const m = await getJson(`/v1/holder/message?address=${address}`);
+        status.textContent = "Sign the message in your wallet (no transaction, no gas)…";
+        const signature = await window.ethereum.request({ method: "personal_sign", params: [m.message, address] });
+        const r = await getJson("/v1/holder/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: m.address, issuedAt: m.issuedAt, signature }) });
+        if (r.holder) {
+          try {
+            localStorage.setItem(KEY, JSON.stringify({ pass: r.pass, address: r.address, expiresAt: r.expiresAt, dailyQuestions: r.dailyQuestions }));
+          } catch {
+            /* storage unavailable: the pass lasts for this page only */
+          }
+          window.spliceHolder = { pass: () => r.pass };
+          show();
+          if (!read()) status.textContent = `Holder access active for ${short(r.address)} on this page.`;
+        } else status.textContent = r.message || "This wallet does not hold enough $SPLICE.";
+      } catch (error) {
+        status.textContent = error && error.code === 4001 ? "Signature cancelled." : (error && error.message) || "Could not verify the wallet. Try again.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+  if (!root || !api) return;
+
+  // ------------------------------------------------------------------ /stocks
+  const stocks = async () => {
+    const card = root.querySelector('[data-table="premiums"]');
+    let d;
+    try {
+      d = await getJson("/v1/stocks");
+    } catch {
+      return message(card, "Live data is unavailable right now. Try again in a minute.");
+    }
+    const rows = [...d.tokens].sort((a, b) => Math.abs(num(b.premiumPct) || 0) - Math.abs(num(a.premiumPct) || 0));
+    if (!rows.length) return message(card, "No stock token pools right now.");
+    card.querySelector("tbody").replaceChildren(...rows.map((t) => row([
+      { text: t.symbol, cls: "strong", title: t.name || "" },
+      { text: usd(t.dexPriceUsd) },
+      { text: t.referencePriceUsd !== null ? `${usd(t.referencePriceUsd)} · ${t.referenceSource === "last-close" ? "last close" : "quote"}` : "unavailable", title: t.referenceSource === "last-close" ? `Stock's last close (Finnhub) at ${t.referenceTime || "?"}; Robinhood's quote spread is ${num(t.quoteSpreadPct).toFixed(1)}%` : `Robinhood quote at ${t.quotedAt || "?"}` },
+      { text: pct(t.premiumPct), tone: t.premiumPct, cls: "strong" },
+      { text: pct(t.change24hPct), tone: t.change24hPct },
+      { text: usd(t.volume24hUsd) },
+      { text: usd(t.liquidityUsd) },
+    ])));
+    card.querySelector("[data-source]").textContent = `DEX: ${src(d.sources.dex)} · reference: ${src(d.sources.reference)} · updated ${ago(d.updatedAt)}${d.session === "closed" ? " · US market closed: reference = last close" : ""}`;
+  };
+
+  // ------------------------------------------------------------------ /screener
+  const screener = async () => {
+    const card = root.querySelector('[data-table="screener"]');
+    const liq = root.querySelector("[data-screener-liq]");
+    const clean = root.querySelector("[data-screener-clean]");
+    let d;
+    try {
+      d = await getJson("/v1/screener");
+    } catch {
+      return message(card, "Live data is unavailable right now. Try again in a minute.");
+    }
+    const draw = () => {
+      const min = num(liq.value) || 0;
+      const list = d.tokens.filter((t) => (num(t.liquidityUsd) || 0) >= min && !(clean.checked && (t.flags || []).some((f) => f.level === "danger")));
+      if (!list.length) return message(card, "No token matches these filters.");
+      card.querySelector("tbody").replaceChildren(...list.map((t) => {
+        const link = el("a", `${t.symbol || "?"}`, "text-link");
+        link.href = `explain?address=${t.address}`;
+        link.title = `${t.name || ""} ${t.address || ""}`.trim();
+        return row([
+          { node: link, cls: "strong" },
+          { text: t.createdAt ? ago(t.createdAt).replace(" ago", "") : "—" },
+          { text: usd(t.liquidityUsd) },
+          { text: usd(t.volume24hUsd) },
+          { text: Number.isFinite(num(t.buys24h)) ? `${t.buys24h} / ${t.sells24h}` : "—" },
+          { node: flagChips(t.flags) },
+        ]);
+      }));
+    };
+    draw();
+    liq.addEventListener("input", draw);
+    clean.addEventListener("change", draw);
+    card.querySelector("[data-source]").textContent = `pools: ${src(d.sources.pools)} · security: ${src(d.sources.security)} · updated ${ago(d.updatedAt)}`;
+  };
+
+  // ------------------------------------------------------------------ /wallet
+  const wallet = () => {
+    const form = root.querySelector("[data-lookup-form]");
+    const input = form.querySelector("input");
+    const result = root.querySelector("[data-wallet-result]");
+    const note = root.querySelector("[data-wallet-note]");
+    const baseNote = note.textContent;
+    const stat = (key, text, sub) => {
+      const card = root.querySelector(`[data-stat="${key}"]`);
+      card.querySelector("[data-value]").textContent = text;
+      card.querySelector("[data-note]").textContent = sub || "";
+    };
+    const lookup = async (address) => {
+      const button = form.querySelector("button");
+      button.disabled = true;
+      button.textContent = "Loading…";
+      try {
+        const d = await getJson(`/v1/wallet/${address}`);
+        result.hidden = false;
+        stat("value", usd(d.pricedValueUsd), d.unpricedTokens ? `${d.unpricedTokens} tokens without a price source` : "all tokens priced");
+        stat("eth", d.native.amount !== null ? num(d.native.amount).toFixed(5) : "—", d.native.valueUsd !== null ? usd(d.native.valueUsd) : "");
+        stat("tokens", String(d.tokenCount), src(d.sources.tokens));
+        stat("risk", d.riskFlags === null ? "n/a" : d.riskFlags.length ? d.riskFlags.join(", ") : "none", src(d.sources.risk));
+        const holdings = root.querySelector('[data-table="holdings"]');
+        if (d.holdings.length) holdings.querySelector("tbody").replaceChildren(...d.holdings.map((h) => row([{ text: h.symbol || short(h.address), cls: "strong", title: `${h.name || ""} ${h.address}`.trim() }, { text: compact(h.amount) }, { text: h.priceUsd !== null ? usd(h.priceUsd) : "no price source", cls: h.priceUsd !== null ? "" : "muted" }, { text: h.valueUsd !== null ? usd(h.valueUsd) : "—" }])));
+        else message(holdings, d.sources.tokens.status === "LIVE" ? "No ERC-20 tokens in this wallet." : "Token balances are unavailable right now.");
+        holdings.querySelector("[data-source]").textContent = `balances: ${src(d.sources.tokens)} · prices: ${src(d.sources.prices)}`;
+        const transfers = root.querySelector('[data-table="transfers"]');
+        if (d.transfers.length) transfers.querySelector("tbody").replaceChildren(...d.transfers.map((t) => row([{ text: ago(t.time).replace(" ago", "") }, { text: t.direction, cls: t.direction === "in" ? "up strong" : "down strong" }, { text: t.symbol || "?" }, { text: compact(t.amount) }, { text: short(t.counterparty), title: t.counterparty || "" }])));
+        else message(transfers, "No recent token transfers.");
+        transfers.querySelector("[data-source]").textContent = src(d.sources.transfers);
+        note.textContent = baseNote;
+      } catch {
+        result.hidden = true;
+        note.textContent = "Could not load this wallet right now. Check the address and try again.";
+      } finally {
+        button.disabled = false;
+        button.textContent = "Look up";
+      }
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const address = input.value.trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return;
+      history.replaceState(null, "", `?address=${address}`);
+      lookup(address);
+    });
+    const preset = new URLSearchParams(location.search).get("address");
+    if (preset && /^0x[0-9a-fA-F]{40}$/.test(preset)) {
+      input.value = preset;
+      lookup(preset);
+    }
+  };
+
+  // ------------------------------------------------------------------ /explain
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const paragraphs = (text) => {
+    const fmt = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+    const out = [];
+    const lines = text.replace(/\r/g, "").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*[-*] /.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*[-*] /.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*] /, ""));
+        i--;
+        out.push(`<ul>${items.map((x) => `<li>${fmt(x)}</li>`).join("")}</ul>`);
+      } else if (/^#{1,6} /.test(line)) out.push(`<h3>${fmt(line.replace(/^#+ /, "").replace(/:$/, ""))}</h3>`);
+      else if (line.trim()) out.push(`<p>${fmt(line)}</p>`);
+    }
+    return out.join("");
+  };  const explain = () => {
+    const form = root.querySelector("[data-lookup-form]");
+    const input = form.querySelector("input");
+    const box = root.querySelector("[data-explain-result]");
+    const text = root.querySelector("[data-explain-text]");
+    const run = async (address) => {
+      const button = form.querySelector("button");
+      button.disabled = true;
+      button.textContent = "Reading…";
+      box.hidden = false;
+      text.replaceChildren(el("p", "Reading the contract from Blockscout and GoPlus…", "muted"));
+      try {
+        const r = await getJson(`/v1/contract/${address}/explain`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pass: window.spliceHolder.pass() || undefined }) });
+        const f = r.facts;
+        root.querySelector("[data-explain-name]").textContent = f.name || short(f.address);
+        const badges = root.querySelector("[data-explain-badges]");
+        badges.replaceChildren(el("span", f.verified ? "source verified" : f.verified === false ? "not verified" : "verification unknown", `chip ${f.verified ? "chip-ok" : "chip-warn"}`));
+        if (f.proxy) badges.append(el("span", "proxy", "chip chip-warn"));
+        root.querySelector("[data-explain-flags]").replaceChildren(flagChips(f.flags));
+        if (r.explanation) text.innerHTML = paragraphs(r.explanation.text);
+        else text.replaceChildren(el("p", r.message || "No explanation available.", "muted"));
+        root.querySelector("[data-explain-count]").textContent = `(${f.functions.length})`;
+        root.querySelector("[data-explain-fns]").replaceChildren(...f.functions.map((fn) => el("li", fn)));
+        root.querySelector("[data-explain-meta]").textContent = `interface: ${src(f.sources.verified)} · flags: ${src(f.sources.security)}${r.explanation ? ` · model ${r.explanation.model || "?"}` : ""} · not an audit`;
+      } catch (error) {
+        text.replaceChildren(el("p", (error && error.message && !/^\d+$/.test(error.message) ? error.message : "Could not explain this contract right now. Try again shortly."), "muted"));
+      } finally {
+        button.disabled = false;
+        button.textContent = "Explain";
+      }
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const address = input.value.trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return;
+      history.replaceState(null, "", `?address=${address}`);
+      run(address);
+    });
+    for (const chip of root.querySelectorAll("[data-explain-example]")) {
+      chip.addEventListener("click", () => {
+        input.value = chip.getAttribute("data-explain-example");
+        form.requestSubmit();
+      });
+    }
+    const preset = new URLSearchParams(location.search).get("address");
+    if (preset && /^0x[0-9a-fA-F]{40}$/.test(preset)) {
+      input.value = preset;
+      run(preset);
+    }
+  };
+
+  // ------------------------------------------------------------------ /embed/splice
+  const embed = async () => {
+    const SVGNS = "http://www.w3.org/2000/svg";
+    const tinyUsd = (n) => {
+      if (!(n > 0 && n < 0.0001)) return usd(n);
+      const zeros = Math.ceil(-Math.log10(n)) - 1;
+      return `$${n.toFixed(zeros + 4)}`;
+    };
+    const set = (key, value) => (root.querySelector(`[data-embed-${key}]`).textContent = value);
+    let supply = 1e9;
+    try {
+      const d = await getJson("/v1/token");
+      const st = (d.market && d.market.stats) || {};
+      supply = num(d.totalSupply) || supply;
+      set("price", tinyUsd(d.priceUsd ?? num(st.priceUsd)));
+      const change = root.querySelector("[data-embed-change]");
+      const ch = st.changePct ? st.changePct.h24 : null;
+      change.textContent = `24h ${pct(ch)}`;
+      if (Number.isFinite(num(ch)) && num(ch) !== 0) change.classList.add(num(ch) > 0 ? "up" : "down");
+      set("mc", usd(d.fdvUsd));
+      set("liq", usd(d.pool ? d.pool.liquidityUsd : st.liquidityUsd));
+      set("holders", d.holders || "—");
+      const closes = ((d.market && d.market.chart) || []).slice(-180).map((k) => k[4]).filter(Number.isFinite);
+      if (closes.length > 1) {
+        const lo = Math.min(...closes), hi = Math.max(...closes), span = hi - lo || 1;
+        const path = document.createElementNS(SVGNS, "path");
+        path.setAttribute("d", closes.map((y, i) => `${i ? "L" : "M"}${((i * 300) / (closes.length - 1)).toFixed(1)} ${(56 - ((y - lo) / span) * 52).toFixed(1)}`).join(" "));
+        path.setAttribute("class", closes[closes.length - 1] >= closes[0] ? "spark up" : "spark down");
+        path.setAttribute("vector-effect", "non-scaling-stroke");
+        root.querySelector("[data-embed-spark]").replaceChildren(path);
+      }
+    } catch {
+      set("price", "unavailable");
+    }
+    const tick = async () => {
+      if (document.hidden) return;
+      try {
+        const live = await getJson("/v1/token/live");
+        if (live.status !== "LIVE") return;
+        set("price", tinyUsd(live.priceUsd));
+        set("mc", usd(live.priceUsd * supply));
+        set("liq", usd(live.liquidityUsd));
+        root.querySelector("[data-embed-live]").classList.add("on");
+      } catch {
+        root.querySelector("[data-embed-live]").classList.remove("on");
+      }
+    };
+    tick();
+    setInterval(tick, 15000);
+  };
+
+  const start = () => {
+    if (kind === "stocks") stocks();
+    else if (kind === "screener") screener();
+    else if (kind === "wallet") wallet();
+    else if (kind === "explain") explain();
+    else if (kind === "embed") embed();
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
 })();

@@ -9,6 +9,9 @@
  */
 import { isLive, type AiMessage, type Composite, type DataResult, type SpliceData } from "@spliceloom/data";
 import { agentSystemPrompt, runAgentTurn } from "@spliceloom/mcp/agent";
+import { contractFacts, explainContract, screener, stockPremiums, walletSummary } from "./features.js";
+import { HOLDER_MIN_TOKENS, holderMessage, issuePass, readPass, verifyHolderSignature } from "./holder.js";
+import { handleTelegramUpdate, type TelegramDeps } from "./telegram.js";
 
 /** The official $SPLICE contract on Robinhood Chain (announced on spliceloom.com and @spliceloom). */
 export const TOKEN_CA = "0xe61717414b34d1f5a1E17F5a91a980A1f4Ef2806";
@@ -35,6 +38,12 @@ export interface ApiOptions {
   burst?: (client: string) => Promise<boolean>;
   askModel?: string;
   now?: () => Date;
+  /** Secret for holder passes (HMAC). Holder access is off without it. */
+  holderSecret?: string;
+  holderDaily?: number;
+  holderDailyLimit?: number;
+  /** Secret token Telegram sends with every webhook call. The bot is off without it. */
+  telegramSecret?: string;
   /** Global JSON cache and background tasks (token market data). */
   cache?: JsonCache;
   background?: (task: Promise<unknown>) => void;
@@ -372,73 +381,186 @@ async function sha256(text: string): Promise<string> {
 
 export function createApiHandler(options: ApiOptions): (request: Request, client: string) => Promise<Response> {
   const now = options.now ?? (() => new Date());
+  const noStore = { "cache-control": "no-store" };
   const json = (body: unknown, status: number, origin: string | null, extra: Record<string, string> = {}) => {
     const headers: Record<string, string> = { "content-type": "application/json; charset=utf-8", "x-content-type-options": "nosniff", vary: "Origin", ...extra };
     if (origin && options.origins.includes(origin)) headers["access-control-allow-origin"] = origin;
     return new Response(JSON.stringify(body), { status, headers });
   };
+  const cacheCtx = (): CacheContext => ({ ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) });
+  const tokenCached = async () => (await cachedJson(cacheCtx(), "token:summary:v3", 60_000, () => tokenSummary(options.data(), cacheCtx()), (v) => v.priceUsd !== null)).value;
+  const chainCached = async () => (await cachedJson(cacheCtx(), "chain:summary:v1", 5 * 60_000, () => chainSummary(options.data()), (v) => v.tvl !== null)).value;
+  const day = () => now().toISOString().slice(0, 10);
+  const tomorrow = () => Date.parse(`${day()}T00:00:00Z`) + 86_400_000;
+  const allowedOrigin = (origin: string | null) => Boolean(origin && options.origins.includes(origin));
+
+  /** $SPLICE balance of an address in whole tokens (null when the chain cannot be read). */
+  const spliceBalance = async (address: string): Promise<number | null> => {
+    const r = await options.data().onchain.call(TOKEN_CA, BALANCE_OF + pad32(address));
+    const word = live<{ result: string }>(r)?.result;
+    return word ? Number(BigInt(word) / 10n ** 18n) : null;
+  };
+
+  /** The holder behind a pass, when the pass is valid and the wallet still holds enough $SPLICE. */
+  const holderOf = async (pass: unknown): Promise<string | null> => {
+    if (typeof pass !== "string" || !options.holderSecret) return null;
+    const address = await readPass(options.holderSecret, pass, now().getTime());
+    if (!address) return null;
+    const balance = await spliceBalance(address);
+    return balance !== null && balance >= HOLDER_MIN_TOKENS ? address : null;
+  };
+
+  /** Applies the AI limits. Holders get their own, larger allowance; everyone shares the burst limit. */
+  const limit = async (client: string, holder: string | null): Promise<string | null> => {
+    if (options.burst && !(await options.burst(holder ?? client))) return "Too many requests in a short time. Wait a minute and try again.";
+    if (!options.counters) return null;
+    if (holder) {
+      const mine = await options.counters.increment(`ask:${day()}:holder:${holder}`, tomorrow());
+      if (mine > (options.holderDaily ?? 50)) return "Holder limit reached for today (50 questions). It resets at 00:00 UTC.";
+      const all = await options.counters.increment(`ask:${day()}:holders`, tomorrow());
+      return all > (options.holderDailyLimit ?? 500) ? "Today's holder questions are used up. Try again after 00:00 UTC." : null;
+    }
+    const mine = await options.counters.increment(`ask:${day()}:${await sha256(client)}`, tomorrow());
+    if (mine > (options.askPerClientDaily ?? 10)) return `Daily question limit reached. Holders of ${HOLDER_MIN_TOKENS.toLocaleString("en-US")}+ $SPLICE get 50 a day (connect your wallet), or install the CLI for unlimited questions: npm install -g @spliceloom/cli`;
+    const all = await options.counters.increment(`ask:${day()}`, tomorrow());
+    return all > (options.askDailyLimit ?? 200) ? "Today's free questions are used up. Install the CLI to keep asking: npm install -g @spliceloom/cli" : null;
+  };
+
+  const runAsk = async (question: string, where: string) => {
+    const messages: AiMessage[] = [
+      { role: "system", content: `${agentSystemPrompt(now(), where)}\n- Keep tables to at most 5 short columns, do not include links or URLs, and keep the answer under 200 words.` },
+      { role: "user", content: question },
+    ];
+    return runAgentTurn(options.data(), messages, { maxSteps: 5, maxTokens: 900, exclude: ASK_EXCLUDED, ...(options.askModel ? { model: options.askModel } : {}) });
+  };
+
+  const telegram: TelegramDeps = {
+    token: tokenCached,
+    chain: chainCached,
+    stock: async (symbol) => {
+      const r = await options.data().stocks.price(symbol);
+      const q = live<{ bid?: string; ask?: string; tokenBid?: string; tokenAsk?: string; dailyHigh?: string; dailyLow?: string; generatedAt?: string }>(r);
+      if (!q) return `${symbol}: not available as a Robinhood stock token right now.`;
+      const two = (v?: string) => (v ? `$${Number(v).toFixed(2)}` : "n/a");
+      return [`${symbol} · Robinhood stock token`, `Token: ${two(q.tokenBid)} / ${two(q.tokenAsk)}`, `Underlying stock: ${two(q.bid)} / ${two(q.ask)}`, `Day range: ${two(q.dailyLow)} – ${two(q.dailyHigh)}`, `Source: Robinhood · ${q.generatedAt ?? ""}`, "All sources: spliceloom.com/stocks"].join("\n");
+    },
+    check: async (address) => {
+      const facts = await contractFacts(options.data(), address);
+      if (facts.isContract === false) return "That address is not a contract on Robinhood Chain.";
+      const flags = facts.flags ? facts.flags.map((f) => `${f.level === "ok" ? "OK" : f.level.toUpperCase()}: ${f.text}`).join("\n") : "Security data unavailable (GoPlus).";
+      return [`${facts.name ?? "Contract"} ${address}`, `Source verified: ${facts.verified === null ? "unknown" : facts.verified ? "yes (Blockscout)" : "no"}`, flags, "Automated flags, not an audit. Not financial advice."].join("\n");
+    },
+    ask: async (question, chatId) => {
+      if (options.counters) {
+        const mine = await options.counters.increment(`tg:${day()}:${await sha256(chatId)}`, tomorrow());
+        if (mine > 10) return "This chat reached today's limit (10 questions). More at spliceloom.com/ask or with the CLI.";
+        const all = await options.counters.increment(`ask:${day()}`, tomorrow());
+        if (all > (options.askDailyLimit ?? 200)) return "Today's free questions are used up. Try again after 00:00 UTC.";
+      }
+      const t = await runAsk(question, "a Telegram chat, answering in plain text without Markdown");
+      if ("failure" in t || "error" in t) return "The model is unavailable right now. Try again shortly.";
+      const sources = [...new Set(t.calls.flatMap((c) => (c.source ? c.source.split(",") : [])))];
+      return `${t.answer.replace(/[*`#]/g, "")}\n\nSources: ${sources.join(", ") || "none"} · not financial advice`;
+    },
+  };
 
   return async (request, client) => {
     const url = new URL(request.url);
     const origin = request.headers.get("origin");
+    const get = request.method === "GET";
+    const post = request.method === "POST";
     if (request.method === "OPTIONS") {
-      if (!origin || !options.origins.includes(origin)) return new Response(null, { status: 403 });
-      return new Response(null, { status: 204, headers: { "access-control-allow-origin": origin, "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type", "access-control-max-age": "86400", vary: "Origin" } });
+      if (!allowedOrigin(origin)) return new Response(null, { status: 403 });
+      return new Response(null, { status: 204, headers: { "access-control-allow-origin": origin!, "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type", "access-control-max-age": "86400", vary: "Origin" } });
     }
     try {
-      if (request.method === "GET" && url.pathname === "/v1/health") return json({ ok: true }, 200, origin, { "cache-control": "no-store" });
-      if (request.method === "GET" && url.pathname === "/v1/token") {
-        const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
-        // The whole summary is served from the global cache too, so no visitor waits for slow providers.
-        const summary = await cachedJson(ctx, "token:summary:v3", 60_000, () => tokenSummary(options.data(), ctx), (v) => v.priceUsd !== null);
-        return json(summary.value, 200, origin, { "cache-control": "public, max-age=30" });
+      if (get && url.pathname === "/v1/health") return json({ ok: true }, 200, origin, noStore);
+      if (get && url.pathname === "/v1/token") return json(await tokenCached(), 200, origin, { "cache-control": "public, max-age=30" });
+      if (get && url.pathname === "/v1/token/live") return json(await tokenLive(options.data(), cacheCtx()), 200, origin, { "cache-control": "public, max-age=4" });
+      if (get && url.pathname === "/v1/chain") return json(await chainCached(), 200, origin, { "cache-control": "public, max-age=60" });
+      if (get && url.pathname === "/v1/stocks") {
+        const r = await cachedJson(cacheCtx(), "stocks:premium:v3", 5 * 60_000, () => stockPremiums(options.data()), (v) => (v.tokens as unknown[]).length > 0);
+        return json({ ...r.value, updatedAt: new Date(r.at).toISOString() }, 200, origin, { "cache-control": "public, max-age=60" });
       }
-      if (request.method === "GET" && url.pathname === "/v1/token/live") {
-        const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
-        return json(await tokenLive(options.data(), ctx), 200, origin, { "cache-control": "public, max-age=4" });
+      if (get && url.pathname === "/v1/screener") {
+        const r = await cachedJson(cacheCtx(), "screener:v1", 3 * 60_000, () => screener(options.data()), (v) => (v.tokens as unknown[]).length > 0);
+        return json({ ...r.value, updatedAt: new Date(r.at).toISOString() }, 200, origin, { "cache-control": "public, max-age=60" });
       }
-      if (request.method === "GET" && url.pathname === "/v1/chain") {
-        const ctx: CacheContext = { ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) };
-        const summary = await cachedJson(ctx, "chain:summary:v1", 5 * 60_000, () => chainSummary(options.data()), (v) => v.tvl !== null);
-        return json(summary.value, 200, origin, { "cache-control": "public, max-age=60" });
+
+      const wallet = /^\/v1\/wallet\/(0x[0-9a-fA-F]{40})$/.exec(url.pathname);
+      if (get && wallet) {
+        const address = wallet[1]!.toLowerCase();
+        const r = await cachedJson(cacheCtx(), `wallet:${address}`, 60_000, async () => {
+          const splice = Number((await tokenCached().catch(() => ({}) as Record<string, unknown>)).priceUsd);
+          return walletSummary(options.data(), address, Number.isFinite(splice) && splice > 0 ? { [TOKEN_CA.toLowerCase()]: splice } : {});
+        }, (v) => (v.sources as { tokens: { status: string } }).tokens.status === "LIVE");
+        return json(r.value, 200, origin, { "cache-control": "public, max-age=30" });
       }
+
+      const contract = /^\/v1\/contract\/(0x[0-9a-fA-F]{40})(\/explain)?$/.exec(url.pathname);
+      if (contract) {
+        const address = contract[1]!.toLowerCase();
+        const facts = async () => (await cachedJson(cacheCtx(), `contract:${address}`, 10 * 60_000, () => contractFacts(options.data(), address), (v) => v.isContract !== null)).value;
+        if (get && !contract[2]) return json(await facts(), 200, origin, { "cache-control": "public, max-age=120" });
+        if (post && contract[2]) {
+          if (!allowedOrigin(origin)) return json({ error: "forbidden", message: "Available on spliceloom.com." }, 403, origin, noStore);
+          const f = await facts();
+          // One explanation per contract per day is stored, so repeat visits cost nothing.
+          const cached = options.cache ? await options.cache.get(`explain:${address}`).catch(() => null) : null;
+          if (cached && now().getTime() - cached.at < 86_400_000) return json({ facts: f, explanation: cached.value }, 200, origin, noStore);
+          const body = (await request.json().catch(() => ({}))) as { pass?: unknown };
+          const blocked = await limit(client, await holderOf(body.pass));
+          if (blocked) return json({ error: "rate_limited", message: blocked }, 429, origin, noStore);
+          const explanation = await explainContract(options.data(), f, options.askModel);
+          if ("error" in explanation) return json({ facts: f, error: "unavailable", message: explanation.error }, 200, origin, noStore);
+          if (options.cache) await options.cache.set(`explain:${address}`, explanation, now().getTime()).catch(() => undefined);
+          return json({ facts: f, explanation }, 200, origin, noStore);
+        }
+      }
+
+      if (get && url.pathname === "/v1/holder/message") {
+        const address = url.searchParams.get("address") ?? "";
+        if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return json({ error: "invalid_input", message: "address must be a 0x address" }, 400, origin, noStore);
+        const issuedAt = now().toISOString();
+        return json({ address: address.toLowerCase(), issuedAt, message: holderMessage(address, issuedAt), minTokens: HOLDER_MIN_TOKENS }, 200, origin, noStore);
+      }
+      if (post && url.pathname === "/v1/holder/verify") {
+        if (!allowedOrigin(origin)) return json({ error: "forbidden" }, 403, origin, noStore);
+        if (!options.holderSecret) return json({ error: "unavailable", message: "Holder access is not enabled." }, 503, origin, noStore);
+        const body = (await request.json().catch(() => ({}))) as { address?: unknown; issuedAt?: unknown; signature?: unknown };
+        const checked = verifyHolderSignature({ address: String(body.address ?? ""), issuedAt: String(body.issuedAt ?? ""), signature: String(body.signature ?? "") }, now().getTime());
+        if (!checked.ok) return json({ error: "invalid_signature", message: checked.reason }, 400, origin, noStore);
+        const balance = await spliceBalance(checked.address);
+        if (balance === null) return json({ error: "unavailable", message: "Could not read the balance from the chain. Try again." }, 503, origin, noStore);
+        if (balance < HOLDER_MIN_TOKENS) return json({ holder: false, address: checked.address, balance, minTokens: HOLDER_MIN_TOKENS, message: `This wallet holds ${balance.toLocaleString("en-US")} SPLICE. Holder access needs ${HOLDER_MIN_TOKENS.toLocaleString("en-US")}.` }, 200, origin, noStore);
+        const pass = await issuePass(options.holderSecret, checked.address, now().getTime());
+        return json({ holder: true, address: checked.address, balance, minTokens: HOLDER_MIN_TOKENS, pass: pass.pass, expiresAt: new Date(pass.expiresAt).toISOString(), dailyQuestions: options.holderDaily ?? 50 }, 200, origin, noStore);
+      }
+
       if (url.pathname === "/v1/ask") {
-        if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, origin);
-        return await ask(request, client, origin);
+        if (!post) return json({ error: "method_not_allowed" }, 405, origin);
+        if (!allowedOrigin(origin)) return json({ error: "forbidden", message: "Ask is available on spliceloom.com." }, 403, origin, noStore);
+        const body = (await request.json().catch(() => ({}))) as { question?: unknown; pass?: unknown };
+        const question = typeof body.question === "string" ? body.question.trim() : "";
+        if (!question) return json({ error: "invalid_input", message: "Send {\"question\": \"...\"}." }, 400, origin, noStore);
+        if (question.length > MAX_QUESTION) return json({ error: "invalid_input", message: `Questions are limited to ${MAX_QUESTION} characters.` }, 400, origin, noStore);
+        const holder = await holderOf(body.pass);
+        const blocked = await limit(client, holder);
+        if (blocked) return json({ error: "rate_limited", message: blocked }, 429, origin, noStore);
+        const t = await runAsk(question, "the Ask box on spliceloom.com, answering visitors");
+        if ("failure" in t || "error" in t) return json({ error: "unavailable", message: "The model is unavailable right now. Try again shortly." }, 503, origin, noStore);
+        return json({ question, answer: t.answer, calls: t.calls, model: t.model ?? null, costUsd: t.costUsd, holder: Boolean(holder) }, 200, origin, noStore);
+      }
+
+      if (post && url.pathname === "/tg/webhook") {
+        // Only Telegram knows the secret token set with setWebhook.
+        if (!options.telegramSecret || request.headers.get("x-telegram-bot-api-secret-token") !== options.telegramSecret) return new Response(null, { status: 403 });
+        const update = await request.json().catch(() => null);
+        return new Response(JSON.stringify(await handleTelegramUpdate(update, telegram)), { status: 200, headers: { "content-type": "application/json" } });
       }
       return json({ error: "not_found" }, 404, origin);
     } catch (error) {
-      return json({ error: "internal", message: "the request failed" }, 500, origin, { "cache-control": "no-store" });
+      return json({ error: "internal", message: "the request failed" }, 500, origin, noStore);
     }
   };
-
-  async function ask(request: Request, client: string, origin: string | null): Promise<Response> {
-    const noStore = { "cache-control": "no-store" };
-    if (!origin || !options.origins.includes(origin)) return json({ error: "forbidden", message: "Ask is available on spliceloom.com." }, 403, origin, noStore);
-    let question = "";
-    try {
-      const body = (await request.json()) as { question?: unknown };
-      if (typeof body.question === "string") question = body.question.trim();
-    } catch {
-      /* handled below */
-    }
-    if (!question) return json({ error: "invalid_input", message: "Send {\"question\": \"...\"}." }, 400, origin, noStore);
-    if (question.length > MAX_QUESTION) return json({ error: "invalid_input", message: `Questions are limited to ${MAX_QUESTION} characters.` }, 400, origin, noStore);
-    if (options.burst && !(await options.burst(client))) return json({ error: "rate_limited", message: "Too many questions in a short time. Wait a minute and try again." }, 429, origin, noStore);
-    if (options.counters) {
-      const day = now().toISOString().slice(0, 10);
-      const tomorrow = Date.parse(`${day}T00:00:00Z`) + 86_400_000;
-      const mine = await options.counters.increment(`ask:${day}:${await sha256(client)}`, tomorrow);
-      if (mine > (options.askPerClientDaily ?? 10)) return json({ error: "rate_limited", message: "Daily question limit reached. Install the CLI for unlimited questions: npm install -g @spliceloom/cli" }, 429, origin, noStore);
-      const all = await options.counters.increment(`ask:${day}`, tomorrow);
-      if (all > (options.askDailyLimit ?? 200)) return json({ error: "rate_limited", message: "Today's free questions are used up. Install the CLI to keep asking: npm install -g @spliceloom/cli" }, 429, origin, noStore);
-    }
-    const messages: AiMessage[] = [
-      { role: "system", content: `${agentSystemPrompt(now(), "the Ask box on spliceloom.com, answering visitors")}\n- This answer is shown on a web page: keep tables to at most 5 short columns, do not include links or URLs, and keep the answer under 200 words.` },
-      { role: "user", content: question },
-    ];
-    const t = await runAgentTurn(options.data(), messages, { maxSteps: 5, maxTokens: 900, exclude: ASK_EXCLUDED, ...(options.askModel ? { model: options.askModel } : {}) });
-    if ("failure" in t || "error" in t) return json({ error: "unavailable", message: "The model is unavailable right now. Try again shortly." }, 503, origin, noStore);
-    return json({ question, answer: t.answer, calls: t.calls, model: t.model ?? null, costUsd: t.costUsd }, 200, origin, noStore);
-  }
 }

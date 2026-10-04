@@ -8,6 +8,8 @@
   "main": "./dist/handler.js",
   "types": "./dist/handler.d.ts",
   "dependencies": {
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0",
     "@spliceloom/data": "0.1.0",
     "@spliceloom/mcp": "0.1.0"
   }

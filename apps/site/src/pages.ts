@@ -174,8 +174,9 @@ function footer(loc: PageLoc, config: SiteConfig): string {
       <nav class="footer-cols" aria-label="Footer">
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
+        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "widgets")}">Widgets</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
-        <div><h2>Project</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
+        <div><h2>Project</h2><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
     </div>
     <div class="footer-meta">
@@ -1123,6 +1124,146 @@ export function renderLive(config: SiteConfig): string {
   </section>`);
 }
 
+/** Robinhood stock tokens: DEX price vs Robinhood's reference price for the token. */
+export function renderStocks(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "Stock token premiums — Splice", description: "Robinhood stock tokens on Robinhood Chain: the DEX price next to Robinhood's reference price, with the premium or discount for each.", path: "stocks", bodyClass: "live-page" }, `
+  <section class="section" data-live="stocks" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Stock tokens</p><h1 class="display">Premium or discount?</h1></div>
+        <p class="section-lead">Each Robinhood stock token trades in a DEX pool on Robinhood Chain. This table puts that price next to Robinhood's own reference price for the token and shows the gap.</p>
+      </div>
+      <div class="live-card" data-table="premiums"><table><thead><tr><th>Token</th><th>DEX price</th><th>Reference</th><th>Premium</th><th>24h</th><th>Volume 24h</th><th>Liquidity</th></tr></thead><tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>
+      <p class="fine">Premium = DEX price ÷ reference price − 1. While Robinhood quotes a token tightly (bid and ask within 2%), the reference is the middle of that quote. When the US market is closed the quote widens, so the reference becomes the stock's last close (Finnhub) × the token's multiplier, marked "last close". Only tokens at the contract address Robinhood lists are shown; DEX prices come from the deepest pool per token. Not financial advice.</p>
+      <p class="more"><a class="text-link" href="${href(config, loc, "docs/stock-tokens")}">splice stock quote: six sources side by side ${ARROW}</a><a class="text-link" href="${href(config, loc, "live")}">Robinhood Chain live ${ARROW}</a></p>
+    </div>
+  </section>`);
+}
+
+/** New pools on Robinhood Chain with automated security flags. */
+export function renderScreener(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "New token screener — Splice", description: "The newest pools on Robinhood Chain with automated GoPlus security flags, liquidity, volume and age.", path: "screener", bodyClass: "live-page" }, `
+  <section class="section" data-live="screener" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Screener</p><h1 class="display">New tokens, checked.</h1></div>
+        <p class="section-lead">The newest pools on Robinhood Chain, each with automated security flags from GoPlus. The web version of <code>splice radar</code>.</p>
+      </div>
+      <div class="screener-filters">
+        <label class="registry-search"><span class="mono">Min liquidity</span><input type="number" min="0" step="1000" value="0" inputmode="numeric" data-screener-liq aria-label="Minimum liquidity in USD"></label>
+        <label class="check"><input type="checkbox" data-screener-clean> <span>Hide tokens with danger flags</span></label>
+      </div>
+      <div class="live-card" data-table="screener"><table><thead><tr><th>Token</th><th>Age</th><th>Liquidity</th><th>Volume 24h</th><th>Buys / sells</th><th>Security</th></tr></thead><tbody><tr><td colspan="6" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>
+      <p class="fine">Tokens are listed automatically from public market data and are not reviewed or endorsed by Splice. Flags are automated checks (honeypot, taxes, mint function, hidden owner, unverified source) and can miss risks; most new tokens are high risk. Click an address to see its contract explained. Not financial advice.</p>
+    </div>
+  </section>`);
+}
+
+/** Any wallet on Robinhood Chain: holdings, values where priced, recent transfers. */
+export function renderWallet(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "Wallet viewer — Splice", description: "Look up any wallet on Robinhood Chain: ETH and token holdings, values where a price source lists the token, and recent transfers.", path: "wallet", bodyClass: "live-page" }, `
+  <section class="section" data-live="wallet" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <p class="kicker">Wallet</p>
+      <h1 class="display">Look up any wallet.</h1>
+      <p class="lead">Holdings, values and recent transfers of an address on Robinhood Chain. Read-only: nothing to connect or sign.</p>
+      <form class="lookup-form" data-lookup-form>
+        <input type="text" name="address" placeholder="0x… wallet address" autocomplete="off" spellcheck="false" maxlength="42" required pattern="0x[0-9a-fA-F]{40}" aria-label="Wallet address">
+        <button class="btn btn-solid" type="submit">Look up</button>
+      </form>
+      <div data-wallet-result hidden>
+        <div class="stat-grid stat-grid-4">
+          ${stat("value", "Priced value")}
+          ${stat("eth", "ETH")}
+          ${stat("tokens", "Tokens held")}
+          ${stat("risk", "Address flags")}
+        </div>
+        <div class="live-grid token-grid">
+          <div class="live-card" data-table="holdings"><h2>Holdings</h2><table><thead><tr><th>Token</th><th>Amount</th><th>Price</th><th>Value</th></tr></thead><tbody></tbody></table><p class="card-source mono" data-source></p></div>
+          <div class="live-card" data-table="transfers"><h2>Recent transfers</h2><table><thead><tr><th>Time</th><th>Dir</th><th>Token</th><th>Amount</th><th>With</th></tr></thead><tbody></tbody></table><p class="card-source mono" data-source></p></div>
+        </div>
+      </div>
+      <p class="fine" data-wallet-note>Values use DefiLlama prices, the $SPLICE pool price and the Chainlink ETH/USD price. Tokens no price source lists are shown without a value, so "priced value" can be lower than the wallet's real worth. Not financial advice.</p>
+    </div>
+  </section>`);
+}
+
+/** Contract explainer: verified interface + automated flags, explained in plain English. */
+export function renderExplain(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "Contract explainer — Splice", description: "Paste a contract address on Robinhood Chain and get its verified functions, automated security flags and a plain-English explanation.", path: "explain", bodyClass: "live-page" }, `
+  <section class="section" data-live="explain" data-api="${e(config.api ?? "")}">
+    <div class="shell narrow">
+      <p class="kicker">Contract explainer</p>
+      <h1 class="display">What does this contract do?</h1>
+      <p class="lead">Paste a contract address on Robinhood Chain. Splice reads its verified interface and automated security flags, then explains them in plain English.</p>
+      <form class="lookup-form" data-lookup-form>
+        <input type="text" name="address" placeholder="0x… contract address" autocomplete="off" spellcheck="false" maxlength="42" required pattern="0x[0-9a-fA-F]{40}" aria-label="Contract address">
+        <button class="btn btn-solid" type="submit">Explain</button>
+      </form>
+      <div class="ask-examples"><button type="button" class="chip" data-explain-example="${TOKEN_CA}">$SPLICE token contract</button></div>
+      <div class="ask-result" data-explain-result hidden>
+        <div class="explain-head"><strong data-explain-name>—</strong><span class="chips" data-explain-badges></span></div>
+        <div class="chips" data-explain-flags></div>
+        <div class="prose ask-answer" data-explain-text></div>
+        <details class="explain-fns"><summary class="mono">Functions <span data-explain-count></span></summary><ul class="mono" data-explain-fns></ul></details>
+        <p class="card-source mono" data-explain-meta></p>
+      </div>
+      <p class="fine">The explanation is generated by an AI model from the contract's verified interface (function and event names) and GoPlus flags. It is not a review of the source code and not an audit, and it can be wrong. Unverified contracts cannot be explained. Not financial advice.</p>
+    </div>
+  </section>`);
+}
+
+/** Embeddable $SPLICE card (served under /embed/, which may be framed by other sites). */
+export function renderEmbed(config: SiteConfig): string {
+  const base = config.siteUrl.replace(/\/$/, "");
+  const v = config.assetVersion ? `?v=${e(config.assetVersion)}` : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src ${e(new URL(config.api ?? base).origin)}; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex">
+<title>$SPLICE — Splice</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/styles.css${v}">
+<script src="../assets/app.js${v}" defer></script>
+</head>
+<body class="embed-body">
+<a class="embed-card" href="${base}/token" target="_blank" rel="noopener" data-live="embed" data-api="${e(config.api ?? "")}">
+  <div class="embed-top"><span class="embed-mark">${LOGO}</span><strong>$SPLICE</strong><span class="live-dot mono" data-embed-live>live</span></div>
+  <div class="embed-price"><strong data-embed-price>—</strong><span class="chip-change" data-embed-change>24h —</span></div>
+  <svg class="embed-spark" data-embed-spark viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"></svg>
+  <div class="embed-stats"><span>MC <b data-embed-mc>—</b></span><span>Liq <b data-embed-liq>—</b></span><span>Holders <b data-embed-holders>—</b></span></div>
+  <div class="embed-foot mono">Live from Robinhood Chain · spliceloom.com</div>
+</a>
+</body>
+</html>
+`;
+}
+
+/** How to embed the $SPLICE card. */
+export function renderWidgets(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  const base = config.siteUrl.replace(/\/$/, "");
+  const snippet = `<iframe src="${base}/embed/splice" width="340" height="260" style="border:0" loading="lazy" title="$SPLICE live price"></iframe>`;
+  return sitePage(config, loc, { title: "Widgets — Splice", description: "Embed a live $SPLICE price card on your own site with one line of HTML.", path: "widgets", bodyClass: "live-page" }, `
+  <section class="section">
+    <div class="shell narrow">
+      <p class="kicker">Widgets</p>
+      <h1 class="display">Put $SPLICE on your site.</h1>
+      <p class="lead">A live price card you can embed anywhere with one line of HTML. It updates itself from Robinhood Chain and links back to the token page.</p>
+      <div class="widget-preview"><iframe src="${href(config, loc, "embed/splice")}" width="340" height="260" loading="lazy" title="$SPLICE live price"></iframe></div>
+      <h2 class="subhead mono">Embed code</h2>
+      <div class="install-row"><code>${e(snippet)}</code><button type="button" class="copy-inline" data-copy="${e(snippet)}">Copy</button></div>
+      <p class="fine">The card is served by spliceloom.com, sets no cookies and loads no third-party scripts. Market data is not financial advice.</p>
+    </div>
+  </section>`);
+}
 /** Ask: the research agent in the browser, rate-limited, every answer with its tool calls and sources. */
 export function renderAsk(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };
@@ -1138,6 +1279,10 @@ export function renderAsk(config: SiteConfig): string {
         <textarea id="ask-q" name="q" rows="2" maxlength="300" placeholder="Ask about tokens, stock tokens, perps, DeFi or wallets…" required></textarea>
         <div class="ask-actions"><span class="mono" data-ask-count>0 / 300</span><button class="btn btn-solid" type="submit">Ask</button></div>
       </form>
+      <div class="holder-box" data-holder>
+        <button type="button" class="btn btn-ghost btn-sm" data-holder-connect>Connect wallet</button>
+        <span class="mono" data-holder-status>Holders of 100,000+ $SPLICE get 50 questions a day. Signing a message only: no transaction, no gas.</span>
+      </div>
       <div class="ask-examples">${examples.map((q) => `<button type="button" class="chip" data-ask-example="${e(q)}">${e(q)}</button>`).join("")}</div>
       <div class="ask-result" data-ask-result hidden>
         <ul class="ask-calls mono" data-ask-calls></ul>

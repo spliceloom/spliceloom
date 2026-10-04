@@ -15,7 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./src/markdown.ts";
-import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderAsk, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
+import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
 import { loadProviders } from "./src/providers.ts";
 import { loadSnapshot, type RegistrySnapshot, type SkillView } from "./src/registry.ts";
 import { BROKER_CAPABILITIES } from "../../packages/spec/dist/index.js";
@@ -35,7 +35,7 @@ export const GITHUB_URL = "https://github.com/spliceloom/spliceloom";
 export const DOC_NAV: NavGroup[] = [
   { title: "Getting started", items: [{ slug: "introduction", title: "Introduction" }, { slug: "installation", title: "Installation" }, { slug: "quickstart", title: "Quickstart" }, { slug: "getting-started", title: "Walkthrough" }, { slug: "creating-a-skill", title: "First skill" }] },
   { title: "Core concepts", items: [{ slug: "packages", title: "Skills" }, { slug: "capabilities", title: "Capabilities" }, { slug: "data-providers", title: "Providers" }, { slug: "architecture", title: "Architecture" }, { slug: "runtime", title: "Runtime" }, { slug: "permissions", title: "Permissions" }, { slug: "provenance", title: "Provenance" }] },
-  { title: "Developers", items: [{ slug: "cli", title: "CLI" }, { slug: "ask", title: "Ask (AI agent)" }, { slug: "sdk", title: "SDK" }, { slug: "adapters", title: "Framework adapters" }, { slug: "mcp", title: "MCP" }, { slug: "authoring-skills", title: "Skill authoring" }, { slug: "spec", title: "Manifest" }, { slug: "composition", title: "Composition" }, { slug: "testing", title: "Testing" }, { slug: "lifecycle", title: "Lockfile & updates" }] },
+  { title: "Developers", items: [{ slug: "cli", title: "CLI" }, { slug: "ask", title: "Ask (AI agent)" }, { slug: "web-tools", title: "Website tools" }, { slug: "sdk", title: "SDK" }, { slug: "adapters", title: "Framework adapters" }, { slug: "mcp", title: "MCP" }, { slug: "authoring-skills", title: "Skill authoring" }, { slug: "spec", title: "Manifest" }, { slug: "composition", title: "Composition" }, { slug: "testing", title: "Testing" }, { slug: "lifecycle", title: "Lockfile & updates" }] },
   { title: "Providers", items: [{ slug: "providers-ai", title: "AI" }, { slug: "providers-github", title: "GitHub" }, { slug: "providers-web", title: "Web" }, { slug: "providers-market", title: "Market data" }, { slug: "providers-onchain", title: "Onchain" }, { slug: "markets", title: "Tokens, global & dashboard" }, { slug: "stock-tokens", title: "Stock tokens & rankings" }, { slug: "robinhood-chain", title: "Robinhood Chain" }] },
   { title: "Security", items: [{ slug: "security", title: "Trust model" }, { slug: "sandbox", title: "Sandbox" }, { slug: "network-security", title: "Network security" }, { slug: "trust", title: "Verification" }, { slug: "signing", title: "Package signing" }] },
   { title: "Registry", items: [{ slug: "public-registry", title: "Public registry" }, { slug: "publishing", title: "Publishing" }, { slug: "private-registry", title: "Private registry" }, { slug: "organizations", title: "Organizations" }, { slug: "releasing", title: "Releasing the CLI" }] },
@@ -265,13 +265,20 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   site.write("token.html", renderToken(config));
   site.write("live.html", renderLive(config));
   site.write("ask.html", renderAsk(config));
+  site.write("stocks.html", renderStocks(config));
+  site.write("screener.html", renderScreener(config));
+  site.write("wallet.html", renderWallet(config));
+  site.write("explain.html", renderExplain(config));
+  site.write("widgets.html", renderWidgets(config));
+  // Embeddable card: the only path other sites may frame (see public/_headers).
+  site.write("embed/splice.html", renderEmbed(config));
   const posts = loadPosts(config);
   for (const post of posts) site.write(`blog/${post.slug}.html`, renderBlogPost(config, post));
   site.write("blog.html", renderBlogIndex(config, posts));
   // Earlier docs URLs on the site (spliceloom.com/docs/…, /skills/…) move to the docs host.
   site.write("_redirects", [`/docs ${docsBase}/ 301`, `/docs/introduction ${docsBase}/ 301`, `/docs/:slug ${docsBase}/:slug 301`, `/skills/:name ${docsBase}/skills/:name 301`, ""].join("\n"));
   site.write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${siteBase}/sitemap.xml\n`);
-  site.write("sitemap.xml", sitemap(siteBase, ["", "live", "ask", "token", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
+  site.write("sitemap.xml", sitemap(siteBase, ["", "live", "stocks", "screener", "wallet", "explain", "ask", "token", "widgets", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
 
   // ---- the docs host: docs at the root (introduction is its home page), skill pages under skills/
   const docs = outputDir(options.docsOut);

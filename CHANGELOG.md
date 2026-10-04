@@ -3,6 +3,21 @@
 Notable changes to the `splice` CLI (`@spliceloom/cli`) and the public registry. Official skills
 are versioned independently in the registry; their versions are listed per release.
 
+## Website — 2026-10-04
+
+New tools on spliceloom.com ([docs](docs/web-tools.md)); no CLI release needed.
+
+- [/token](https://spliceloom.com/token): a live terminal for $SPLICE with 1m–1D candles, price from the pool's on-chain
+  reserves, trades read from swap events, top holders, burns and an on-chain transparency panel.
+- [/stocks](https://spliceloom.com/stocks): stock token premiums and discounts against Robinhood's quote, or the last close
+  when the market is shut.
+- [/screener](https://spliceloom.com/screener): newest pools with GoPlus security flags.
+- [/wallet](https://spliceloom.com/wallet): holdings, values and transfers of any address.
+- [/explain](https://spliceloom.com/explain): a contract's verified interface explained in plain English.
+- Holder access on [/ask](https://spliceloom.com/ask): sign a message with a wallet holding 100,000+ $SPLICE for 50 questions a day.
+- [/widgets](https://spliceloom.com/widgets): an embeddable live $SPLICE card.
+- Telegram bot webhook in the public API (/splice, /tvl, /stock, /check, /ask).
+
 ## 0.3.0 — 2026-10-04
 
 **Package signing**

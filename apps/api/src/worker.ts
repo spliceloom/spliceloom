@@ -91,11 +91,13 @@ export default {
     const perClient = positive(env.ASK_PER_CLIENT_DAILY);
     if (perClient) options.askPerClientDaily = perClient;
     if (typeof env.AI_ASK_MODEL === "string") options.askModel = env.AI_ASK_MODEL;
+    if (typeof env.HOLDER_SECRET === "string" && env.HOLDER_SECRET.length >= 32) options.holderSecret = env.HOLDER_SECRET;
+    if (typeof env.TELEGRAM_WEBHOOK_SECRET === "string" && env.TELEGRAM_WEBHOOK_SECRET.length >= 16) options.telegramSecret = env.TELEGRAM_WEBHOOK_SECRET;
     const handle = createApiHandler(options);
     const client = request.headers.get("cf-connecting-ip") ?? "unknown";
 
     // Edge cache for public GETs (keyed by URL only; the Origin header only changes CORS).
-    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live"].includes(new URL(request.url).pathname);
+    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener"].includes(new URL(request.url).pathname);
     if (!cacheable) return handle(request, client);
     const cache = (globalThis as { caches?: { default?: CacheLike } }).caches?.default;
     if (!cache) return handle(request, client);

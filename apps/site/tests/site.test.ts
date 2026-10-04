@@ -320,7 +320,11 @@ describe("website build against a registry", () => {
         if (section && /\sdata-local/.test(tag) && onThisPage && !html.includes(`id="${section}"`)) problems.push(`${label}: ${href} → ${section} (section on this page)`);
       }
       for (const match of html.matchAll(/\ssrc="([^"]+)"/g)) {
-        if (!/^(https?:|data:)/.test(match[1]!) && !existsSync(match[1]!.startsWith("/") ? join(out, match[1]!.replace(/\?v=[0-9a-f]+$/, "")) : resolve(dirname(join(out, file)), match[1]!.replace(/\?v=[0-9a-f]+$/, "")))) problems.push(`${label}: src ${match[1]}`);
+        if (/^(https?:|data:)/.test(match[1]!)) continue;
+        const src = match[1]!.replace(/\?v=[0-9a-f]+$/, "");
+        const path = src.startsWith("/") ? join(out, src) : resolve(dirname(join(out, file)), src);
+        // Files resolve as they are; a framed page (the embed card) resolves like a clean URL.
+        if (!existsSync(path) && !existsSync(`${path}.html`)) problems.push(`${label}: src ${match[1]}`);
       }
       // assets carry a content version so a deploy is never hidden by the browser cache
       if (!/assets\/styles\.css\?v=[0-9a-f]{10}"/.test(html) || !/assets\/app\.js\?v=[0-9a-f]{10}"/.test(html)) problems.push(`${label}: unversioned assets`);

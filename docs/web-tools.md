@@ -1,0 +1,87 @@
+# Website tools
+
+Tools on [spliceloom.com](https://spliceloom.com) that need no install. They read the same data as
+the CLI and SDK, and every panel shows its source and how fresh it is.
+
+| Page | What it shows |
+| --- | --- |
+| [/live](https://spliceloom.com/live) | Robinhood Chain right now: TVL, stock tokens, perps, DeFi protocols, newest pools |
+| [/token](https://spliceloom.com/token) | $SPLICE: live price from the pool, candles, trades, holders, burns, transparency |
+| [/stocks](https://spliceloom.com/stocks) | Stock tokens: DEX price next to a reference price, with the premium or discount |
+| [/screener](https://spliceloom.com/screener) | Newest pools with automated GoPlus security flags, filterable |
+| [/wallet](https://spliceloom.com/wallet) | Any wallet: holdings, values where a price source lists the token, recent transfers |
+| [/explain](https://spliceloom.com/explain) | A contract's verified functions and security flags, explained in plain English |
+| [/ask](https://spliceloom.com/ask) | The `splice ask` agent in the browser |
+| [/widgets](https://spliceloom.com/widgets) | An embeddable live $SPLICE card |
+
+## Stock token premiums
+
+`premium = DEX price ÷ reference price − 1`.
+
+- While Robinhood quotes a token tightly (bid and ask within 2%), the reference is the middle of
+  that quote.
+- When the US market is closed the quote widens (a bid of $2.72 and an ask of $11.80 has no useful
+  middle), so the reference becomes the stock's last close from Finnhub × the token's multiplier.
+  The row is marked "last close".
+- Only pools whose token is the contract address Robinhood lists for that symbol are shown.
+  Look-alike tokens that reuse a stock ticker are left out.
+
+## Contract explainer
+
+The explanation is written by an AI model from two inputs: the contract's verified interface on
+Blockscout (function and event signatures) and GoPlus's automated flags. It is not a review of the
+source code and not an audit. Contracts without verified source cannot be explained. One
+explanation per contract is stored for a day.
+
+## Holder access
+
+Wallets holding at least 100,000 $SPLICE get 50 Ask questions a day instead of 10.
+
+1. Click **Connect wallet** on the Ask page.
+2. Sign the message your wallet shows. It is a `personal_sign` message: not a transaction, no gas,
+   no approval.
+3. The API recovers the signer, reads its $SPLICE balance with `balanceOf`, and returns a pass
+   valid for 24 hours. The balance is read again on every question.
+
+The pass is kept in your browser only. Nothing about the wallet is stored on the server except a
+per-day question counter.
+
+## Embeddable card
+
+```html
+<iframe src="https://spliceloom.com/embed/splice" width="340" height="260" style="border:0" loading="lazy" title="$SPLICE live price"></iframe>
+```
+
+The card updates itself from the pool every 15 seconds, sets no cookies and loads no third-party
+scripts. `/embed/*` is the only path other sites may frame.
+
+## Telegram bot
+
+The API includes a webhook bot with the same data.
+
+| Command | Reply |
+| --- | --- |
+| `/splice` | $SPLICE price, market cap, liquidity, holders, burned |
+| `/tvl` | Robinhood Chain TVL and the top perps by volume |
+| `/stock NVDA` | A stock token: token and underlying bid/ask, day range |
+| `/check 0x…` | Verified-source status and security flags of a token contract |
+| `/ask <question>` | A plain-English question (10 per chat per day) |
+
+Replies are plain text returned in the webhook response. The webhook only accepts calls that carry
+the secret token registered with Telegram's `setWebhook`.
+
+## Public API
+
+Read-only JSON at `https://api.spliceloom.com`, cached at the edge.
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /v1/chain` | The data behind /live |
+| `GET /v1/token`, `GET /v1/token/live` | $SPLICE summary; live price and recent swaps from the chain |
+| `GET /v1/stocks` | Stock token premiums |
+| `GET /v1/screener` | Newest pools with security flags |
+| `GET /v1/wallet/:address` | Wallet holdings and transfers |
+| `GET /v1/contract/:address` | Contract facts (verified name, functions, flags) |
+
+Browsers may call it from spliceloom.com only. The AI endpoints (Ask and contract explanations)
+are limited per visitor and per day. Market data is not financial advice.

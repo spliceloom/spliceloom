@@ -11,3 +11,9 @@
 /assets/*
   ! Cache-Control
   Cache-Control: public, max-age=3600, no-transform
+
+# The embeddable card may be framed by any site; everything else stays unframeable.
+/embed/*
+  ! X-Frame-Options
+  ! Content-Security-Policy
+  Content-Security-Policy: frame-ancestors *
