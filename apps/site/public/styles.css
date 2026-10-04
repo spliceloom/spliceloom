@@ -3644,6 +3644,20 @@ pre.code:hover .copy-button,
 .live-card td:has(.chips) {
   white-space: normal;
 }
+.live-card[data-table="odds"] > table td,
+.live-card[data-table="filings"] > table td {
+  white-space: normal;
+  vertical-align: top;
+}
+.fine + .live-card {
+  margin-top: 28px;
+}
+.pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 12px;
+}
 .screener-filters {
   display: flex;
   flex-wrap: wrap;

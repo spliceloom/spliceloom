@@ -1388,6 +1388,60 @@
       { text: usd(t.liquidityUsd) },
     ])));
     card.querySelector("[data-source]").textContent = `DEX: ${src(d.sources.dex)} · reference: ${src(d.sources.reference)} · updated ${ago(d.updatedAt)}${d.session === "closed" ? " · US market closed: reference = last close" : ""}`;
+    filings([...d.tokens].sort((a, b) => (num(b.volume24hUsd) || 0) - (num(a.volume24hUsd) || 0)).map((t) => t.symbol));
+  };
+
+  // SEC filings of the company behind a stock token (one symbol at a time).
+  const filings = (symbols) => {
+    const card = root.querySelector('[data-table="filings"]');
+    const pick = card && card.querySelector("[data-filings-pick]");
+    if (!card || !symbols.length) return;
+    const load = async (symbol) => {
+      for (const b of pick.children) b.setAttribute("aria-pressed", String(b.textContent === symbol));
+      message(card, "Loading…");
+      card.querySelector("[data-source]").textContent = "";
+      let d;
+      try {
+        d = await getJson(`/v1/filings/${encodeURIComponent(symbol)}`);
+      } catch (error) {
+        return message(card, error && error.body && error.body.error === "not_found" ? `SEC lists no filer for ${symbol}.` : "Filings are unavailable right now. Try again in a minute.");
+      }
+      if (!d.filings.length) return message(card, `No recent company filings for ${symbol}.`);
+      card.querySelector("tbody").replaceChildren(...d.filings.map((f) => {
+        // Only links to sec.gov are followed.
+        const link = typeof f.url === "string" && f.url.startsWith("https://www.sec.gov/Archives/") ? Object.assign(el("a", "sec.gov", "text-link"), { href: f.url, target: "_blank", rel: "noopener noreferrer" }) : null;
+        return row([{ text: f.filedAt }, { text: f.form, cls: "strong" }, { text: [f.label, f.items.filter((i) => !i.startsWith("9.01")).join("; ")].filter(Boolean).join(": ") || (f.description && f.description !== f.form ? f.description : "—") }, link ? { node: link } : { text: "—" }]);
+      }));
+      card.querySelector("[data-source]").textContent = `${d.company || symbol} · SEC EDGAR · updated ${ago(d.updatedAt)}${d.insider ? ` · insider forms in the last 30 days: ${d.insider.filings30d}` : ""}`;
+    };
+    pick.replaceChildren(...symbols.map((s) => {
+      const b = el("button", s, "tf");
+      b.type = "button";
+      b.addEventListener("click", () => load(s));
+      return b;
+    }));
+    load(symbols[0]);
+  };
+
+  // ------------------------------------------------------------------ /live: prediction markets
+  const odds = async () => {
+    const card = root.querySelector('[data-table="odds"]');
+    if (!card) return;
+    let d;
+    try {
+      d = await getJson("/v1/odds");
+    } catch {
+      return message(card, "Prediction-market odds are unavailable right now.");
+    }
+    const events = [...d.macro, ...d.stocks];
+    if (!events.length) return message(card, "No open events right now.");
+    card.querySelector("tbody").replaceChildren(...events.map((e) => row([
+      { text: e.title, cls: "strong" },
+      { text: e.outcomes.map((o) => `${o.label} ${Math.round(o.probability * 100)}%`).join(" · ") },
+      { text: usd(e.volume24hUsd) },
+      { text: e.endsAt ? e.endsAt.slice(0, 10) : "—" },
+    ])));
+    card.querySelector("[data-source]").textContent = `${src(d.source)} · updated ${ago(d.updatedAt)}`;
   };
 
   // ------------------------------------------------------------------ /screener
@@ -1600,6 +1654,7 @@
 
   const start = () => {
     if (kind === "stocks") stocks();
+    else if (kind === "chain") odds();
     else if (kind === "screener") screener();
     else if (kind === "wallet") wallet();
     else if (kind === "explain") explain();

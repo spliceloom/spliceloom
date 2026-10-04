@@ -16,7 +16,13 @@ New tools on spliceloom.com ([docs](docs/web-tools.md)); no CLI release needed.
 - [/explain](https://spliceloom.com/explain): a contract's verified interface explained in plain English.
 - Holder access on [/ask](https://spliceloom.com/ask): sign a message with a wallet holding 100,000+ $SPLICE for 50 questions a day.
 - [/widgets](https://spliceloom.com/widgets): an embeddable live $SPLICE card.
-- Telegram bot webhook in the public API (/splice, /tvl, /stock, /check, /ask).
+- Telegram bot [@spliceloombot](https://t.me/spliceloombot): 22 commands, greets by name, alerts for price levels,
+  large trades, burns and new tokens.
+- SEC filings of the company behind each stock token on [/stocks](https://spliceloom.com/stocks) and in the bot
+  (`/filings NVDA`), from SEC EDGAR.
+- Prediction-market odds (Fed, inflation, stock events) on [/live](https://spliceloom.com/live) and in the bot
+  (`/odds`), from Polymarket.
+- Discord interactions endpoint in the public API with the same commands as the Telegram bot.
 
 ## 0.3.0 — 2026-10-04
 

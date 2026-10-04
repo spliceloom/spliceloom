@@ -1117,6 +1117,8 @@ export function renderLive(config: SiteConfig): string {
         ${table("perps", "Perpetuals · by volume", ["Market", "Mark", "24h", "Open interest"])}
         ${table("protocols", "DeFi protocols · by TVL", ["Protocol", "Category", "TVL", "7d"])}
       </div>
+      ${table("odds", "Prediction markets · Fed, inflation, stocks", ["Event", "Odds", "Volume 24h", "Ends"])}
+      <p class="fine">Odds are prices of Polymarket contracts read as probabilities. For events with price levels, the levels nearest 50% are shown. They are market prices, not a forecast by Splice, and not financial advice.</p>
       ${table("newPools", "Newest pools", ["Pool", "DEX", "Liquidity", "Created"])}
       <p class="fine">New pools are listed automatically from public market data. They are not reviewed or endorsed by Splice; many new tokens are risky. Run <code>splice report &lt;token&gt;</code> for security checks. Not financial advice.</p>
       <p class="more"><a class="text-link" href="${href(config, loc, "ask")}">Ask a question about this data ${ARROW}</a><a class="text-link" href="${href(config, loc, "docs/robinhood-chain")}">Robinhood Chain data in the CLI ${ARROW}</a></p>
@@ -1136,6 +1138,13 @@ export function renderStocks(config: SiteConfig): string {
       </div>
       <div class="live-card" data-table="premiums"><table><thead><tr><th>Token</th><th>DEX price</th><th>Reference</th><th>Premium</th><th>24h</th><th>Volume 24h</th><th>Liquidity</th></tr></thead><tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>
       <p class="fine">Premium = DEX price ÷ reference price − 1. While Robinhood quotes a token tightly (bid and ask within 2%), the reference is the middle of that quote. When the US market is closed the quote widens, so the reference becomes the stock's last close (Finnhub) × the token's multiplier, marked "last close". Only tokens at the contract address Robinhood lists are shown; DEX prices come from the deepest pool per token. Not financial advice.</p>
+      <div class="live-card" data-table="filings">
+        <h2>SEC filings of the company behind the token</h2>
+        <div class="pick" data-filings-pick role="group" aria-label="Stock token"></div>
+        <table><thead><tr><th>Filed</th><th>Form</th><th>What it is</th><th>Document</th></tr></thead><tbody><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table>
+        <p class="card-source mono" data-source></p>
+      </div>
+      <p class="fine">Filings come from SEC EDGAR for the ticker's registrant: current reports (8-K, with the reported items), quarterly and annual reports, ownership filings. Insider forms (3, 4, 5, 144) are counted instead of listed. A stock token is not the stock: read Robinhood's terms for what the token gives you.</p>
       <p class="more"><a class="text-link" href="${href(config, loc, "docs/stock-tokens")}">splice stock quote: six sources side by side ${ARROW}</a><a class="text-link" href="${href(config, loc, "live")}">Robinhood Chain live ${ARROW}</a></p>
     </div>
   </section>`);

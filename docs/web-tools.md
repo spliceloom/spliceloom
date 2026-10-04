@@ -5,9 +5,9 @@ the CLI and SDK, and every panel shows its source and how fresh it is.
 
 | Page | What it shows |
 | --- | --- |
-| [/live](https://spliceloom.com/live) | Robinhood Chain right now: TVL, stock tokens, perps, DeFi protocols, newest pools |
+| [/live](https://spliceloom.com/live) | Robinhood Chain right now: TVL, stock tokens, perps, DeFi protocols, prediction-market odds, newest pools |
 | [/token](https://spliceloom.com/token) | $SPLICE: live price from the pool, candles, trades, holders, burns, transparency |
-| [/stocks](https://spliceloom.com/stocks) | Stock tokens: DEX price next to a reference price, with the premium or discount |
+| [/stocks](https://spliceloom.com/stocks) | Stock tokens: DEX price next to a reference price, with the premium or discount; SEC filings of the company |
 | [/screener](https://spliceloom.com/screener) | Newest pools with automated GoPlus security flags, filterable |
 | [/wallet](https://spliceloom.com/wallet) | Any wallet: holdings, values where a price source lists the token, recent transfers |
 | [/explain](https://spliceloom.com/explain) | A contract's verified functions and security flags, explained in plain English |
@@ -25,6 +25,21 @@ the CLI and SDK, and every panel shows its source and how fresh it is.
   The row is marked "last close".
 - Only pools whose token is the contract address Robinhood lists for that symbol are shown.
   Look-alike tokens that reuse a stock ticker are left out.
+
+## SEC filings
+
+The filings card on /stocks reads SEC EDGAR for the registrant behind the ticker: current reports
+(8-K, with the reported item numbers translated: 2.02 is earnings, 5.02 a director or officer
+change, and so on), quarterly and annual reports, and ownership filings. Insider forms (3, 4, 5,
+144) arrive in bursts, so they are counted for the last 30 days instead of listed. Links go to the
+document on sec.gov. A ticker SEC does not list (some funds) shows "no filer".
+
+## Prediction markets
+
+The odds card on /live reads open Polymarket events tagged Fed or inflation, plus stock events that
+name a listed stock token's ticker. A contract's price is shown as a probability. Events whose
+outcomes exclude each other show the most likely outcomes; events made of independent price levels
+show the levels nearest 50%. These are market prices, not a forecast by Splice.
 
 ## Contract explainer
 
@@ -67,6 +82,8 @@ commands).
 | `/holders`, `/burned`, `/ca` | Top holders and the dev wallet, the burned total, the official contract |
 | `/tvl`, `/perps` | Robinhood Chain TVL; perpetual markets by volume |
 | `/stocks`, `/stock NVDA` | Stock token premiums; one stock token |
+| `/filings NVDA` | The company's latest SEC filings |
+| `/odds` | Prediction-market odds: Fed, inflation, stock events |
 | `/new` | Newest tokens with security flags |
 | `/check 0x…` | Verified-source status and security flags of a token contract |
 | `/wallet 0x…` | What a wallet holds |
@@ -87,6 +104,13 @@ trades are read from the last ~2,000 blocks, so a trade is reported within a few
 
 Replies are plain text returned in the webhook response. The webhook only accepts calls that carry
 the secret token registered with Telegram's `setWebhook`.
+
+## Discord bot
+
+The API also serves a Discord interactions endpoint (`POST /discord/interactions`) with the same
+commands as slash commands. Every request is verified against the application's Ed25519 public key
+before it is read, replies are plain text with mentions disabled, and alerts stay on Telegram.
+
 ## Public API
 
 Read-only JSON at `https://api.spliceloom.com`, cached at the edge.
@@ -96,6 +120,8 @@ Read-only JSON at `https://api.spliceloom.com`, cached at the edge.
 | `GET /v1/chain` | The data behind /live |
 | `GET /v1/token`, `GET /v1/token/live` | $SPLICE summary; live price and recent swaps from the chain |
 | `GET /v1/stocks` | Stock token premiums |
+| `GET /v1/filings/:symbol` | Latest SEC filings of a ticker's registrant |
+| `GET /v1/odds` | Prediction-market odds (Polymarket) |
 | `GET /v1/screener` | Newest pools with security flags |
 | `GET /v1/wallet/:address` | Wallet holdings and transfers |
 | `GET /v1/contract/:address` | Contract facts (verified name, functions, flags) |

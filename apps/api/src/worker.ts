@@ -117,6 +117,7 @@ export default {
     for (const name of PROVIDER_ENV) if (typeof env[name] === "string") providerEnv[name] = env[name] as string;
     const options: Parameters<typeof createApiHandler>[0] = {
       data: () => new SpliceData({ env: providerEnv, envFile: null, platformFetch: (input, init) => fetch(input, init) }),
+      fetch: (url, init) => fetch(url, init),
       origins: env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_ORIGINS,
     };
     options.background = (task) => ctx.waitUntil(task);
@@ -136,11 +137,12 @@ export default {
     if (typeof env.AI_ASK_MODEL === "string") options.askModel = env.AI_ASK_MODEL;
     if (typeof env.HOLDER_SECRET === "string" && env.HOLDER_SECRET.length >= 32) options.holderSecret = env.HOLDER_SECRET;
     if (typeof env.TELEGRAM_WEBHOOK_SECRET === "string" && env.TELEGRAM_WEBHOOK_SECRET.length >= 16) options.telegramSecret = env.TELEGRAM_WEBHOOK_SECRET;
+    if (typeof env.DISCORD_PUBLIC_KEY === "string" && /^[0-9a-f]{64}$/i.test(env.DISCORD_PUBLIC_KEY)) options.discordPublicKey = env.DISCORD_PUBLIC_KEY;
     const handle = createApiHandler(options);
     const client = request.headers.get("cf-connecting-ip") ?? "unknown";
 
     // Edge cache for public GETs (keyed by URL only; the Origin header only changes CORS).
-    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener"].includes(new URL(request.url).pathname);
+    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener", "/v1/odds"].includes(new URL(request.url).pathname);
     if (!cacheable) return handle(request, client);
     const cache = (globalThis as { caches?: { default?: CacheLike } }).caches?.default;
     if (!cache) return handle(request, client);

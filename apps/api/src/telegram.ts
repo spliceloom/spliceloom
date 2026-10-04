@@ -31,6 +31,10 @@ export interface TelegramDeps {
   stock: (symbol: string) => Promise<string>;
   check: (address: string) => Promise<string>;
   ask: (question: string, chatId: string) => Promise<string>;
+  /** Latest SEC filings of a ticker; null when SEC lists no filer for it. */
+  filings?: (symbol: string) => Promise<Record<string, any> | null>;
+  /** Prediction-market odds (Polymarket). */
+  odds?: () => Promise<Record<string, any>>;
   alerts?: AlertStore;
 }
 
@@ -48,6 +52,8 @@ const COMMANDS = [
   "/perps — perpetual markets by volume",
   "/stocks — stock tokens: premium or discount",
   "/stock NVDA — one stock token",
+  "/filings NVDA — the company's latest SEC filings",
+  "/odds — prediction-market odds: Fed, inflation, stocks",
   "/new — newest tokens with security flags",
   "/check 0x… — security flags for a token contract",
   "/wallet 0x… — what a wallet holds",
@@ -62,6 +68,7 @@ const COMMANDS = [
   "",
   "/links — website, docs, GitHub",
 ];
+export { COMMANDS as BOT_COMMANDS };
 
 const usd = (v: unknown): string => {
   const n = Number(v);
@@ -148,17 +155,21 @@ export async function telegramReply(text: string, chatId: string, deps: Telegram
   const command = m[1]!.toLowerCase();
   const arg = (m[2] ?? "").trim();
   switch (command) {
-    case "start":
+    case "start": {
+      // The greeting must not fail when the token summary is unavailable; the contract line is then left out.
+      const address = await deps.token().then((t) => String(t.address), () => null);
       return [
         `Hi ${name}, I'm Splice.`,
         "",
         "I read Robinhood Chain live and tell you what I find, with the source of every number: the $SPLICE token, stock tokens, perps, new tokens and their security flags, any wallet. I can also message this chat when something happens: a price level, a large trade, a burn, a new token.",
         "",
+        ...(address ? ["The only official $SPLICE contract (Robinhood Chain):", address, ""] : []),
         "Try /splice or /tvl, or ask me in plain English: /ask what are the top perp markets?",
         "",
         "All commands: /help",
         "Market data, not financial advice.",
       ].join("\n");
+    }
     case "help":
       return [`Here is what I can do, ${name}.`, "", ...COMMANDS].join("\n");
     case "splice":
@@ -221,6 +232,33 @@ export async function telegramReply(text: string, chatId: string, deps: Telegram
     case "stock":
       if (!/^[A-Za-z.]{1,8}$/.test(arg)) return `${name}, use it like this: /stock NVDA`;
       return `${name}, here you go.\n${await deps.stock(arg.toUpperCase())}`;
+    case "filings": {
+      if (!/^[A-Za-z.-]{1,8}$/.test(arg)) return `${name}, use it like this: /filings NVDA`;
+      if (!deps.filings) return `${name}, filings are not available right now.`;
+      const symbol = arg.toUpperCase();
+      const f = await deps.filings(symbol);
+      if (!f) return `${name}, SEC lists no filer for ${symbol}.`;
+      const rows = ((f.filings ?? []) as Array<any>).slice(0, 8);
+      if (!rows.length) return `${name}, no recent SEC filings for ${symbol}.`;
+      return [
+        `${name}, the latest SEC filings of ${f.company ?? symbol} (${symbol}):`,
+        ...rows.map((r) => `${r.filedAt}  ${r.form}${r.label ? `  ${r.label}` : ""}${r.items?.length ? `: ${r.items.filter((i: string) => !i.startsWith("9.01")).join("; ")}` : ""}`),
+        Number.isFinite(Number(f.insider?.filings30d)) ? `Insider forms (3, 4, 5, 144) in the last 30 days: ${f.insider.filings30d}` : "",
+        "Source: SEC EDGAR · spliceloom.com/stocks",
+      ].filter(Boolean).join("\n");
+    }
+    case "odds": {
+      if (!deps.odds) return `${name}, prediction-market odds are not available right now.`;
+      const o = await deps.odds();
+      const events = [...((o.macro ?? []) as Array<any>).slice(0, 4), ...((o.stocks ?? []) as Array<any>).slice(0, 3)];
+      if (!events.length) return `${name}, prediction-market odds are unavailable right now.`;
+      return [
+        `${name}, prediction-market odds right now:`,
+        ...events.flatMap((e) => ["", e.title, (e.outcomes as Array<{ label: string; probability: number }>).map((x) => `${x.label} ${Math.round(x.probability * 100)}%`).join(" · ")]),
+        "",
+        "Source: Polymarket contract prices, not a forecast · spliceloom.com/live",
+      ].join("\n");
+    }
     case "new": {
       const s = await deps.screener();
       const rows = ((s.tokens ?? []) as Array<any>).slice(0, 8);

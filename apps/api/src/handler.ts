@@ -10,6 +10,8 @@
 import { isLive, type AiMessage, type Composite, type DataResult, type SpliceData } from "@spliceloom/data";
 import { agentSystemPrompt, runAgentTurn } from "@spliceloom/mcp/agent";
 import { contractFacts, explainContract, screener, stockPremiums, walletSummary } from "./features.js";
+import { handleDiscordInteraction, verifyDiscordSignature } from "./discord.js";
+import { TICKER, predictionOdds, secFilings, secTickers, type ExternalFetch } from "./extras.js";
 import { HOLDER_MIN_TOKENS, holderMessage, issuePass, readPass, verifyHolderSignature } from "./holder.js";
 import { handleTelegramUpdate, type AlertStore, type TelegramDeps } from "./telegram.js";
 
@@ -46,6 +48,10 @@ export interface ApiOptions {
   telegramSecret?: string;
   /** Telegram alert subscriptions (D1 in the Worker). Alert commands are off without it. */
   alerts?: AlertStore;
+  /** Fetch for the keyless public sources (SEC EDGAR, Polymarket) and Discord replies. Those features are off without it. */
+  fetch?: ExternalFetch;
+  /** The Discord application's public key (hex). The Discord bot is off without it. */
+  discordPublicKey?: string;
   /** Global JSON cache and background tasks (token market data). */
   cache?: JsonCache;
   background?: (task: Promise<unknown>) => void;
@@ -382,14 +388,40 @@ async function sha256(text: string): Promise<string> {
 }
 
 /** The cached data sources shared by the HTTP routes, the Telegram bot and the scheduled alerts. */
-export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "background">) {
+export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "background" | "fetch">) {
   const cacheCtx = (): CacheContext => ({ ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) });
   const stamp = <T extends Record<string, unknown>>(r: { value: T; at: number }) => ({ ...r.value, updatedAt: new Date(r.at).toISOString() });
+  const external = (): ExternalFetch => {
+    if (!options.fetch) throw new Error("external sources are not configured");
+    return options.fetch;
+  };
+  const stocks = async () => stamp(await cachedJson(cacheCtx(), "stocks:premium:v3", 5 * 60_000, () => stockPremiums(options.data()), (v) => (v.tokens as unknown[]).length > 0));
   return {
     cacheCtx,
     token: async () => (await cachedJson(cacheCtx(), "token:summary:v3", 60_000, () => tokenSummary(options.data(), cacheCtx()), (v) => v.priceUsd !== null)).value,
     chain: async () => (await cachedJson(cacheCtx(), "chain:summary:v1", 5 * 60_000, () => chainSummary(options.data()), (v) => v.tvl !== null)).value,
-    stocks: async () => stamp(await cachedJson(cacheCtx(), "stocks:premium:v3", 5 * 60_000, () => stockPremiums(options.data()), (v) => (v.tokens as unknown[]).length > 0)),
+    stocks,
+    /** Polymarket odds: macro events and events naming a listed stock token. */
+    odds: async () =>
+      stamp(
+        await cachedJson(
+          cacheCtx(),
+          "odds:v1",
+          10 * 60_000,
+          async () => {
+            const symbols = await stocks().then((s) => (s.tokens as Array<{ symbol: string }>).map((t) => t.symbol), () => [] as string[]);
+            return predictionOdds(external(), symbols);
+          },
+          (v) => (v.source as { status: string }).status === "LIVE",
+        ),
+      ),
+    /** Latest SEC filings of a ticker; null when SEC lists no filer for it. */
+    filings: async (symbol: string) => {
+      const tickers = (await cachedJson(cacheCtx(), "sec:tickers:v1", 7 * 86_400_000, () => secTickers(external()), (v) => Object.keys(v).length > 1000)).value;
+      const cik = tickers[symbol];
+      if (!cik) return null;
+      return stamp(await cachedJson(cacheCtx(), `filings:${symbol}`, 30 * 60_000, () => secFilings(external(), symbol, cik), (v) => (v.filings as unknown[]).length > 0));
+    },
     screener: async () => stamp(await cachedJson(cacheCtx(), "screener:v1", 3 * 60_000, () => screener(options.data()), (v) => (v.tokens as unknown[]).length > 0)),
     live: () => tokenLive(options.data(), cacheCtx()),
   };
@@ -465,6 +497,7 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
     stocks: sources.stocks,
     screener: sources.screener,
     wallet: (address) => walletCached(address.toLowerCase()),
+    ...(options.fetch ? { filings: sources.filings, odds: sources.odds } : {}),
     ...(options.alerts ? { alerts: options.alerts } : {}),
     stock: async (symbol) => {
       const r = await options.data().stocks.price(symbol);
@@ -509,6 +542,19 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       if (get && url.pathname === "/v1/chain") return json(await chainCached(), 200, origin, { "cache-control": "public, max-age=60" });
       if (get && url.pathname === "/v1/stocks") return json(await sources.stocks(), 200, origin, { "cache-control": "public, max-age=60" });
       if (get && url.pathname === "/v1/screener") return json(await sources.screener(), 200, origin, { "cache-control": "public, max-age=60" });
+
+      if (get && url.pathname === "/v1/odds") {
+        const o = await sources.odds();
+        // An unavailable result is not cached at the edge.
+        return json(o, 200, origin, (o.source as { status: string }).status === "LIVE" ? { "cache-control": "public, max-age=120" } : noStore);
+      }
+      const filings = /^\/v1\/filings\/([A-Za-z.\-]{1,8})$/.exec(url.pathname);
+      if (get && filings) {
+        const symbol = filings[1]!.toUpperCase();
+        if (!TICKER.test(symbol)) return json({ error: "invalid_input", message: "symbol must be a ticker" }, 400, origin, noStore);
+        const f = await sources.filings(symbol);
+        return f ? json(f, 200, origin, { "cache-control": "public, max-age=300" }) : json({ error: "not_found", message: "SEC lists no filer for " + symbol + "." }, 404, origin, noStore);
+      }
 
       const wallet = /^\/v1\/wallet\/(0x[0-9a-fA-F]{40})$/.exec(url.pathname);
       if (get && wallet) {
@@ -576,6 +622,17 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
         if (!options.telegramSecret || request.headers.get("x-telegram-bot-api-secret-token") !== options.telegramSecret) return new Response(null, { status: 403 });
         const update = await request.json().catch(() => null);
         return new Response(JSON.stringify(await handleTelegramUpdate(update, telegram)), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (post && url.pathname === "/discord/interactions") {
+        // Only Discord can sign with the application's key; unsigned calls are rejected before parsing.
+        const body = await request.text();
+        if (!options.discordPublicKey || !(await verifyDiscordSignature(options.discordPublicKey, request.headers.get("x-signature-ed25519"), request.headers.get("x-signature-timestamp"), body))) return new Response(null, { status: 401 });
+        let interaction: unknown = null;
+        try {
+          interaction = JSON.parse(body);
+        } catch {}
+        const reply = await handleDiscordInteraction(interaction, telegram, { ...(options.background ? { background: options.background } : {}), ...(options.fetch ? { fetch: options.fetch } : {}) });
+        return new Response(JSON.stringify(reply), { status: 200, headers: { "content-type": "application/json" } });
       }
       return json({ error: "not_found" }, 404, origin);
     } catch (error) {
