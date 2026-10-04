@@ -7,7 +7,11 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 routes = [{ pattern = "api.spliceloom.com", custom_domain = true }]
 
-# Ask counters (per client per day, global per day).
+# Telegram alerts are checked every 2 minutes (a no-op while nobody is subscribed).
+[triggers]
+crons = ["*/2 * * * *"]
+
+# Ask counters (per client per day, global per day) and Telegram alert subscriptions.
 [[d1_databases]]
 binding = "DB"
 database_name = "splice-api"

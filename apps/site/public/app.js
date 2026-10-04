@@ -586,7 +586,7 @@
     if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
     if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
     if (Math.abs(n) >= 1) return `$${n.toFixed(2)}`;
-    if (n === 0) return "$0";
+    if (Math.abs(n) < 1e-9) return "$0";
     return `$${n.toPrecision(4)}`;
   };
   const amount = (v) => {
@@ -1234,7 +1234,7 @@
     if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
     if (Math.abs(n) >= 1e4) return `$${(n / 1e3).toFixed(1)}K`;
     if (Math.abs(n) >= 1) return `$${n.toFixed(2)}`;
-    if (n === 0) return "$0";
+    if (Math.abs(n) < 1e-9) return "$0";
     return `$${n.toPrecision(4)}`;
   };
   const compact = (v) => {

@@ -57,19 +57,36 @@ scripts. `/embed/*` is the only path other sites may frame.
 
 ## Telegram bot
 
-The API includes a webhook bot with the same data.
+[@spliceloombot](https://t.me/spliceloombot) answers from the same data and can message a chat
+when something happens. It greets you by your Telegram name and works in groups (it only answers
+commands).
 
 | Command | Reply |
 | --- | --- |
-| `/splice` | $SPLICE price, market cap, liquidity, holders, burned |
-| `/tvl` | Robinhood Chain TVL and the top perps by volume |
-| `/stock NVDA` | A stock token: token and underlying bid/ask, day range |
+| `/splice` | $SPLICE price, market cap, liquidity, volume, holders, burned |
+| `/holders`, `/burned`, `/ca` | Top holders and the dev wallet, the burned total, the official contract |
+| `/tvl`, `/perps` | Robinhood Chain TVL; perpetual markets by volume |
+| `/stocks`, `/stock NVDA` | Stock token premiums; one stock token |
+| `/new` | Newest tokens with security flags |
 | `/check 0x…` | Verified-source status and security flags of a token contract |
+| `/wallet 0x…` | What a wallet holds |
 | `/ask <question>` | A plain-English question (10 per chat per day) |
+
+### Alerts
+
+| Command | Alert |
+| --- | --- |
+| `/alert above 0.00002`, `/alert below 0.00001` | $SPLICE price crosses a level (sent once, then removed) |
+| `/whales on 100` | $SPLICE trades of $100 or more, from the pool's swap events |
+| `/burns on` | Every new $SPLICE burn |
+| `/radar on 10000` | New tokens with $10,000+ liquidity (checked every 10 minutes, at most 3 per check) |
+| `/alerts`, `/alertoff 2`, `/alertoff all` | List and remove the chat's alerts (up to 10 per chat) |
+
+Alerts are checked every 2 minutes. Price alerts use the pool price read from the chain. Large
+trades are read from the last ~2,000 blocks, so a trade is reported within a few minutes.
 
 Replies are plain text returned in the webhook response. The webhook only accepts calls that carry
 the secret token registered with Telegram's `setWebhook`.
-
 ## Public API
 
 Read-only JSON at `https://api.spliceloom.com`, cached at the edge.

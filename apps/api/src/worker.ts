@@ -7,10 +7,16 @@
  * and globally per day.
  */
 import { PROVIDER_ENV, SpliceData } from "@spliceloom/data";
-import { createApiHandler, type Counters, type JsonCache } from "./handler.js";
+import { apiSources, createApiHandler, type Counters, type JsonCache } from "./handler.js";
+import { runTelegramAlerts, type AlertState } from "./telegram-alerts.js";
+import type { AlertKind, AlertRow, AlertStore } from "./telegram.js";
 
 interface D1Like {
-  prepare(sql: string): { bind(...values: unknown[]): { first<T>(): Promise<T | null>; run(): Promise<unknown> }; run(): Promise<unknown> };
+  prepare(sql: string): {
+    bind(...values: unknown[]): { first<T>(): Promise<T | null>; all<T>(): Promise<{ results: T[] }>; run(): Promise<{ meta?: { changes?: number } }> };
+    all<T>(): Promise<{ results: T[] }>;
+    run(): Promise<unknown>;
+  };
 }
 
 interface CacheLike {
@@ -64,6 +70,42 @@ function d1Cache(db: D1Like): JsonCache {
   };
 }
 
+/** Telegram alert subscriptions. whale / burn / radar are one per chat. */
+function d1Alerts(db: D1Like): AlertStore {
+  let ready: Promise<unknown> | undefined;
+  const init = () => (ready ??= db.prepare("CREATE TABLE IF NOT EXISTS tg_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, chat TEXT NOT NULL, kind TEXT NOT NULL, value REAL, created INTEGER NOT NULL)").run());
+  const row = (r: { id: number; chat: string; kind: string; value: number | null }): AlertRow => ({ id: r.id, chatId: r.chat, kind: r.kind as AlertKind, value: r.value });
+  return {
+    async add(chatId, kind, value) {
+      await init();
+      if (kind === "whale" || kind === "burn" || kind === "radar") await db.prepare("DELETE FROM tg_alerts WHERE chat = ?1 AND kind = ?2").bind(chatId, kind).run();
+      await db.prepare("INSERT INTO tg_alerts (chat, kind, value, created) VALUES (?1, ?2, ?3, ?4)").bind(chatId, kind, value, Date.now()).run();
+    },
+    async list(chatId) {
+      await init();
+      return (await db.prepare("SELECT id, chat, kind, value FROM tg_alerts WHERE chat = ?1 ORDER BY id").bind(chatId).all<{ id: number; chat: string; kind: string; value: number | null }>()).results.map(row);
+    },
+    async remove(chatId, which) {
+      await init();
+      const r =
+        which === "all"
+          ? await db.prepare("DELETE FROM tg_alerts WHERE chat = ?1").bind(chatId).run()
+          : typeof which === "number"
+            ? await db.prepare("DELETE FROM tg_alerts WHERE chat = ?1 AND id = ?2").bind(chatId, which).run()
+            : await db.prepare("DELETE FROM tg_alerts WHERE chat = ?1 AND kind = ?2").bind(chatId, which).run();
+      return r.meta?.changes ?? 0;
+    },
+    async all() {
+      await init();
+      return (await db.prepare("SELECT id, chat, kind, value FROM tg_alerts ORDER BY id LIMIT 2000").all<{ id: number; chat: string; kind: string; value: number | null }>()).results.map(row);
+    },
+    async removeById(id) {
+      await init();
+      await db.prepare("DELETE FROM tg_alerts WHERE id = ?1").bind(id).run();
+    },
+  };
+}
+
 const positive = (v: unknown) => {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : undefined;
@@ -81,6 +123,7 @@ export default {
     if (env.DB) {
       options.counters = d1Counters(env.DB);
       options.cache = d1Cache(env.DB);
+      options.alerts = d1Alerts(env.DB);
       // Expired counters are dropped occasionally (no cron needed).
       if (Math.random() < 0.01) ctx.waitUntil(env.DB.prepare("DELETE FROM counters WHERE expires < ?1").bind(Date.now()).run().catch(() => undefined));
     }
@@ -113,5 +156,24 @@ export default {
     if (origin && options.origins.includes(origin)) out.headers.set("access-control-allow-origin", origin);
     out.headers.set("vary", "Origin");
     return out;
+  },
+
+  /** Every 2 minutes: deliver Telegram alerts (does nothing while nobody is subscribed). */
+  async scheduled(_event: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
+    const botToken = env.TELEGRAM_BOT_TOKEN;
+    if (!env.DB || typeof botToken !== "string") return;
+    const providerEnv: Record<string, string> = {};
+    for (const name of PROVIDER_ENV) if (typeof env[name] === "string") providerEnv[name] = env[name] as string;
+    const cache = d1Cache(env.DB);
+    const sources = apiSources({ data: () => new SpliceData({ env: providerEnv, envFile: null, platformFetch: (input, init) => fetch(input, init) }), cache, background: (task) => ctx.waitUntil(task) });
+    const state: AlertState = {
+      get: async <T>(key: string) => ((await cache.get(key))?.value as T | undefined) ?? null,
+      set: (key, value) => cache.set(key, value, Date.now()),
+    };
+    const send = async (chatId: string, text: string) => {
+      const r = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), disable_web_page_preview: true }) });
+      return r.ok;
+    };
+    await runTelegramAlerts({ store: d1Alerts(env.DB), state, live: sources.live, token: sources.token, screener: sources.screener, send });
   },
 };

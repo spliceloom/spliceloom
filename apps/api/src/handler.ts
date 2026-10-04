@@ -11,7 +11,7 @@ import { isLive, type AiMessage, type Composite, type DataResult, type SpliceDat
 import { agentSystemPrompt, runAgentTurn } from "@spliceloom/mcp/agent";
 import { contractFacts, explainContract, screener, stockPremiums, walletSummary } from "./features.js";
 import { HOLDER_MIN_TOKENS, holderMessage, issuePass, readPass, verifyHolderSignature } from "./holder.js";
-import { handleTelegramUpdate, type TelegramDeps } from "./telegram.js";
+import { handleTelegramUpdate, type AlertStore, type TelegramDeps } from "./telegram.js";
 
 /** The official $SPLICE contract on Robinhood Chain (announced on spliceloom.com and @spliceloom). */
 export const TOKEN_CA = "0xe61717414b34d1f5a1E17F5a91a980A1f4Ef2806";
@@ -44,6 +44,8 @@ export interface ApiOptions {
   holderDailyLimit?: number;
   /** Secret token Telegram sends with every webhook call. The bot is off without it. */
   telegramSecret?: string;
+  /** Telegram alert subscriptions (D1 in the Worker). Alert commands are off without it. */
+  alerts?: AlertStore;
   /** Global JSON cache and background tasks (token market data). */
   cache?: JsonCache;
   background?: (task: Promise<unknown>) => void;
@@ -379,6 +381,20 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
+/** The cached data sources shared by the HTTP routes, the Telegram bot and the scheduled alerts. */
+export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "background">) {
+  const cacheCtx = (): CacheContext => ({ ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) });
+  const stamp = <T extends Record<string, unknown>>(r: { value: T; at: number }) => ({ ...r.value, updatedAt: new Date(r.at).toISOString() });
+  return {
+    cacheCtx,
+    token: async () => (await cachedJson(cacheCtx(), "token:summary:v3", 60_000, () => tokenSummary(options.data(), cacheCtx()), (v) => v.priceUsd !== null)).value,
+    chain: async () => (await cachedJson(cacheCtx(), "chain:summary:v1", 5 * 60_000, () => chainSummary(options.data()), (v) => v.tvl !== null)).value,
+    stocks: async () => stamp(await cachedJson(cacheCtx(), "stocks:premium:v3", 5 * 60_000, () => stockPremiums(options.data()), (v) => (v.tokens as unknown[]).length > 0)),
+    screener: async () => stamp(await cachedJson(cacheCtx(), "screener:v1", 3 * 60_000, () => screener(options.data()), (v) => (v.tokens as unknown[]).length > 0)),
+    live: () => tokenLive(options.data(), cacheCtx()),
+  };
+}
+
 export function createApiHandler(options: ApiOptions): (request: Request, client: string) => Promise<Response> {
   const now = options.now ?? (() => new Date());
   const noStore = { "cache-control": "no-store" };
@@ -387,9 +403,10 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
     if (origin && options.origins.includes(origin)) headers["access-control-allow-origin"] = origin;
     return new Response(JSON.stringify(body), { status, headers });
   };
-  const cacheCtx = (): CacheContext => ({ ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) });
-  const tokenCached = async () => (await cachedJson(cacheCtx(), "token:summary:v3", 60_000, () => tokenSummary(options.data(), cacheCtx()), (v) => v.priceUsd !== null)).value;
-  const chainCached = async () => (await cachedJson(cacheCtx(), "chain:summary:v1", 5 * 60_000, () => chainSummary(options.data()), (v) => v.tvl !== null)).value;
+  const sources = apiSources(options);
+  const cacheCtx = sources.cacheCtx;
+  const tokenCached = sources.token;
+  const chainCached = sources.chain;
   const day = () => now().toISOString().slice(0, 10);
   const tomorrow = () => Date.parse(`${day()}T00:00:00Z`) + 86_400_000;
   const allowedOrigin = (origin: string | null) => Boolean(origin && options.origins.includes(origin));
@@ -434,9 +451,21 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
     return runAgentTurn(options.data(), messages, { maxSteps: 5, maxTokens: 900, exclude: ASK_EXCLUDED, ...(options.askModel ? { model: options.askModel } : {}) });
   };
 
+  const walletCached = async (address: string) =>
+    (
+      await cachedJson(cacheCtx(), `wallet:${address}`, 60_000, async () => {
+        const splice = Number((await tokenCached().catch(() => ({}) as Record<string, unknown>)).priceUsd);
+        return walletSummary(options.data(), address, Number.isFinite(splice) && splice > 0 ? { [TOKEN_CA.toLowerCase()]: splice } : {});
+      }, (v) => (v.sources as { tokens: { status: string } }).tokens.status === "LIVE")
+    ).value;
+
   const telegram: TelegramDeps = {
     token: tokenCached,
     chain: chainCached,
+    stocks: sources.stocks,
+    screener: sources.screener,
+    wallet: (address) => walletCached(address.toLowerCase()),
+    ...(options.alerts ? { alerts: options.alerts } : {}),
     stock: async (symbol) => {
       const r = await options.data().stocks.price(symbol);
       const q = live<{ bid?: string; ask?: string; tokenBid?: string; tokenAsk?: string; dailyHigh?: string; dailyLow?: string; generatedAt?: string }>(r);
@@ -476,25 +505,15 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
     try {
       if (get && url.pathname === "/v1/health") return json({ ok: true }, 200, origin, noStore);
       if (get && url.pathname === "/v1/token") return json(await tokenCached(), 200, origin, { "cache-control": "public, max-age=30" });
-      if (get && url.pathname === "/v1/token/live") return json(await tokenLive(options.data(), cacheCtx()), 200, origin, { "cache-control": "public, max-age=4" });
+      if (get && url.pathname === "/v1/token/live") return json(await sources.live(), 200, origin, { "cache-control": "public, max-age=4" });
       if (get && url.pathname === "/v1/chain") return json(await chainCached(), 200, origin, { "cache-control": "public, max-age=60" });
-      if (get && url.pathname === "/v1/stocks") {
-        const r = await cachedJson(cacheCtx(), "stocks:premium:v3", 5 * 60_000, () => stockPremiums(options.data()), (v) => (v.tokens as unknown[]).length > 0);
-        return json({ ...r.value, updatedAt: new Date(r.at).toISOString() }, 200, origin, { "cache-control": "public, max-age=60" });
-      }
-      if (get && url.pathname === "/v1/screener") {
-        const r = await cachedJson(cacheCtx(), "screener:v1", 3 * 60_000, () => screener(options.data()), (v) => (v.tokens as unknown[]).length > 0);
-        return json({ ...r.value, updatedAt: new Date(r.at).toISOString() }, 200, origin, { "cache-control": "public, max-age=60" });
-      }
+      if (get && url.pathname === "/v1/stocks") return json(await sources.stocks(), 200, origin, { "cache-control": "public, max-age=60" });
+      if (get && url.pathname === "/v1/screener") return json(await sources.screener(), 200, origin, { "cache-control": "public, max-age=60" });
 
       const wallet = /^\/v1\/wallet\/(0x[0-9a-fA-F]{40})$/.exec(url.pathname);
       if (get && wallet) {
         const address = wallet[1]!.toLowerCase();
-        const r = await cachedJson(cacheCtx(), `wallet:${address}`, 60_000, async () => {
-          const splice = Number((await tokenCached().catch(() => ({}) as Record<string, unknown>)).priceUsd);
-          return walletSummary(options.data(), address, Number.isFinite(splice) && splice > 0 ? { [TOKEN_CA.toLowerCase()]: splice } : {});
-        }, (v) => (v.sources as { tokens: { status: string } }).tokens.status === "LIVE");
-        return json(r.value, 200, origin, { "cache-control": "public, max-age=30" });
+        return json(await walletCached(address), 200, origin, { "cache-control": "public, max-age=30" });
       }
 
       const contract = /^\/v1\/contract\/(0x[0-9a-fA-F]{40})(\/explain)?$/.exec(url.pathname);
