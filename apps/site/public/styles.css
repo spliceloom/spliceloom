@@ -3694,6 +3694,43 @@ pre.code:hover .copy-button,
 .live-page .subhead {
   margin: 56px 0 14px;
 }
+.signup-box {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+.signup-box p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+.signup-box [hidden] {
+  display: none;
+}
+.signup-box > div {
+  display: grid;
+  gap: 12px;
+}
+.signup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.signup-box .install-row code {
+  overflow-wrap: anywhere;
+}
+.signup-box [data-signup-status]:empty {
+  display: none;
+}
+.signup-box [data-signup-status] {
+  font-size: 13px;
+  color: var(--ember, #ff8a4c);
+}
 .agents-steps {
   margin-top: 22px;
 }

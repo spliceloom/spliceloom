@@ -41,6 +41,7 @@ import {
   type WhoamiResponse,
 } from "@spliceloom/spec";
 import { generateToken, hashToken } from "./auth.js";
+import { GITHUB_LOGIN_PATTERN, SIGNUP_CHALLENGE_MINUTES, SIGNUP_MIN_ACCOUNT_AGE_DAYS, SIGNUP_TOKEN_DAYS, newSignupCode, type GitHubAccount, type GitHubIdentity } from "./signup.js";
 import { ArtifactStoreError, isUniqueViolation, type ArtifactStore, type SqlDatabase, type StoredArtifact } from "./storage.js";
 
 export type RegistryErrorCode =
@@ -59,6 +60,9 @@ export type RegistryErrorCode =
   | "ARTIFACT_STORAGE_FAILED"
   | "METADATA_WRITE_FAILED"
   | "DEPENDENCIES_UNSUPPORTED"
+  | "VERIFICATION_FAILED"
+  | "VERIFICATION_UNAVAILABLE"
+  | "SIGNUP_DISABLED"
   | "KEY_EXISTS"
   | "KEY_REVOKED"
   | "KEY_NOT_REGISTERED"
@@ -471,6 +475,13 @@ export class RegistryService {
   /** A user creates an extra, publish-only token for themselves (e.g. for CI). */
   async createUserToken(user: AuthUser, options: TokenOptions): Promise<CreatedTokenResponse> {
     this.requireManage(user);
+    // A token limited to some namespaces can only create tokens limited to those namespaces.
+    const scope = user.token?.namespaces;
+    if (scope) {
+      const wanted = options.namespaces ?? scope;
+      if (!wanted.every((ns) => scope.includes(ns))) throw new RegistryError("TOKEN_SCOPE", 403, `This token may only create tokens for: ${scope.map((n) => `@${n}`).join(", ")}`);
+      options = { ...options, namespaces: wanted };
+    }
     return this.insertToken(user, { ...options, canManage: false });
   }
 
@@ -660,6 +671,69 @@ export class RegistryService {
     if (row?.owner_id === user.id) return;
     if (await this.db.first("SELECT 1 AS x FROM namespace_maintainers WHERE namespace = ? AND user_id = ?", [namespace, user.id])) return;
     throw new RegistryError("FORBIDDEN", 403, `You do not publish to @${namespace}`);
+  }
+
+  // ---------------------------------------------------------------- sign-up
+
+  /** Refuses a sign-up whose account name or namespace already belongs to someone else. */
+  private async assertSignupAvailable(login: string): Promise<void> {
+    const user = await this.db.first<{ id: string; github_login: string | null }>("SELECT id, github_login FROM users WHERE name = ?", [login]);
+    if (user && user.github_login !== login) throw new RegistryError("USER_EXISTS", 409, `The name "${login}" is already used by another registry account. Open an issue to get a publisher account.`);
+    const ns = await this.db.first<NamespaceRow>("SELECT * FROM namespaces WHERE name = ?", [login]);
+    if (ns && ns.owner_id !== null && ns.owner_id !== user?.id) throw new RegistryError("FORBIDDEN", 403, `Namespace @${login} already has an owner`);
+    if (ns && ns.owner_id === null && ns.reserved === 1) throw new RegistryError("NAMESPACE_RESERVED", 403, `Namespace @${login} is reserved`);
+  }
+
+  /** Step 1: a one-time code the publisher puts in the description of a public gist. */
+  async startSignup(loginInput: string): Promise<{ github: string; namespace: string; code: string; expiresAt: string }> {
+    if (!GITHUB_LOGIN_PATTERN.test(loginInput)) throw new RegistryError("BAD_REQUEST", 400, "Enter a GitHub username");
+    const login = loginInput.toLowerCase();
+    assertName(login, "namespace");
+    await this.assertSignupAvailable(login);
+    const now = this.now();
+    await this.db.run("DELETE FROM signup_challenges WHERE expires_at <= ? OR github_login = ?", [now.toISOString(), login]);
+    const code = newSignupCode();
+    const expiresAt = new Date(now.getTime() + SIGNUP_CHALLENGE_MINUTES * 60_000).toISOString();
+    await this.db.run("INSERT INTO signup_challenges (code, github_login, created_at, expires_at) VALUES (?, ?, ?, ?)", [code, login, now.toISOString(), expiresAt]);
+    return { github: login, namespace: login, code, expiresAt };
+  }
+
+  /**
+   * Step 2: checks the gist, then creates (or finds) the account, gives it its namespace and issues
+   * a token that can only act on that namespace. The token is returned once.
+   */
+  async completeSignup(loginInput: string, code: string, identity: GitHubIdentity): Promise<CreatedTokenResponse & { namespace: string }> {
+    if (!GITHUB_LOGIN_PATTERN.test(loginInput)) throw new RegistryError("BAD_REQUEST", 400, "Enter a GitHub username");
+    const login = loginInput.toLowerCase();
+    const now = this.now();
+    const challenge = await this.db.first<{ code: string; expires_at: string }>("SELECT code, expires_at FROM signup_challenges WHERE code = ? AND github_login = ?", [code, login]);
+    if (!challenge || challenge.expires_at <= now.toISOString()) throw new RegistryError("VERIFICATION_FAILED", 400, "This code is unknown or has expired. Start again to get a new one.");
+    let account: GitHubAccount | null;
+    try {
+      account = await identity.lookup(login);
+    } catch {
+      throw new RegistryError("VERIFICATION_UNAVAILABLE", 503, "GitHub could not be reached. Try again in a minute.");
+    }
+    if (!account || account.login.toLowerCase() !== login) throw new RegistryError("VERIFICATION_FAILED", 400, `GitHub has no user "${login}"`);
+    if (account.type !== "User") throw new RegistryError("VERIFICATION_FAILED", 400, "Only personal GitHub accounts can sign up");
+    const created = Date.parse(account.createdAt);
+    if (!Number.isFinite(created) || now.getTime() - created < SIGNUP_MIN_ACCOUNT_AGE_DAYS * 86_400_000) {
+      throw new RegistryError("VERIFICATION_FAILED", 400, `The GitHub account must be at least ${SIGNUP_MIN_ACCOUNT_AGE_DAYS} days old`);
+    }
+    if (!account.gistDescriptions.some((d) => d.includes(code))) {
+      throw new RegistryError("VERIFICATION_FAILED", 400, "No public gist of this account has the code in its description yet. Create it, then try again.");
+    }
+    await this.assertSignupAvailable(login);
+    let user = await this.db.first<AuthUser>("SELECT id, name FROM users WHERE name = ? AND github_login = ?", [login, login]);
+    if (!user) {
+      user = { id: crypto.randomUUID(), name: login };
+      await this.db.run("INSERT INTO users (id, name, created_at, github_login) VALUES (?, ?, ?, ?)", [user.id, login, now.toISOString(), login]);
+    }
+    await this.db.run("INSERT OR IGNORE INTO namespaces (name, owner_id, reserved, created_at) VALUES (?, ?, 0, ?)", [login, user.id, now.toISOString()]);
+    await this.db.run("UPDATE namespaces SET owner_id = ? WHERE name = ? AND owner_id IS NULL AND reserved = 0", [user.id, login]);
+    await this.db.run("DELETE FROM signup_challenges WHERE github_login = ?", [login]);
+    const token = await this.insertToken(user, { label: "sign-up", namespaces: [login], expiresInDays: SIGNUP_TOKEN_DAYS, canManage: true });
+    return { ...token, namespace: login };
   }
 
   // ---------------------------------------------------------------- admin

@@ -6,6 +6,7 @@ import { ARCHIVE_CONTENT_TYPE, BUNDLE_CONTENT_TYPE, INTEGRITY_HEADER, REGISTRY_A
 import { SHA256_HEX_PATTERN, bearerToken, constantTimeEqual, hashToken } from "./auth.js";
 import { DEFAULT_RATE_LIMITS, type RateLimiter, type RateLimits } from "./ratelimit.js";
 import { RegistryError, type AuthUser, type RegistryService, type TokenOptions } from "./service.js";
+import type { GitHubIdentity } from "./signup.js";
 import type { ArtifactStore } from "./storage.js";
 import { handleMcpHttp } from "@spliceloom/mcp/http";
 import { RegistryMcpBackend } from "./mcp.js";
@@ -19,6 +20,8 @@ export interface HandlerOptions {
   adminTokenHash?: string;
   /** Optional rate limiters. Without them no limits are applied. */
   rateLimits?: RateLimits;
+  /** Reads GitHub accounts for self-service sign-up. Sign-up is disabled without it. */
+  identity?: GitHubIdentity;
   /** Previous artifact store, enabling `POST /admin/artifacts/migrate`. */
   legacyArtifacts?: ArtifactStore;
 }
@@ -176,6 +179,7 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
             "GET /packages/:namespace/:name/:version/download",
             "GET /packages/:namespace/:name/:version/provenance",
             "POST /publish",
+            "POST /signup/start, POST /signup/verify",
             "GET /auth/whoami",
             "GET|POST /auth/tokens",
             "DELETE /auth/tokens/:id",
@@ -189,6 +193,16 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
         });
       }
       if (method === "GET" && first === "health" && n === 1) return json(service.health());
+
+      // Self-service sign-up: prove a GitHub account with a public gist, get a token for its namespace.
+      if (first === "signup" && method === "POST" && n === 2 && (a === "start" || a === "verify")) {
+        if (!options.identity) throw new RegistryError("SIGNUP_DISABLED", 503, "Sign-up is not enabled on this registry");
+        await enforce(limits.signup, `ip:${clientKey(request)}`);
+        const body = await readJson(request);
+        const github = stringField(body, "github", true)!;
+        if (a === "start") return json(await service.startSignup(github));
+        return json(await service.completeSignup(github, stringField(body, "code", true)!, options.identity), 201);
+      }
 
       if (first === "packages" && method === "GET") {
         if (n === 2 && a === "search") {
@@ -326,8 +340,11 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
     // anonymous, read-only GET routes get CORS; authenticated/admin routes never do, and no
     // credentials are ever allowed cross-origin.
     if (method === "OPTIONS" && publicRead) return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
+    // Sign-up is an anonymous form: it carries no credentials, so any origin may post to it.
+    const signup = /^\/signup\/(?:start|verify)\/?$/.test(new URL(request.url).pathname);
+    if (method === "OPTIONS" && signup) return new Response(null, { status: 204, headers: { ...CORS_PREFLIGHT_HEADERS, "access-control-allow-methods": "POST, OPTIONS" } });
     const response = await route(request);
-    if (publicRead && method === "GET") {
+    if ((publicRead && method === "GET") || (signup && method === "POST")) {
       for (const [key, value] of Object.entries(CORS_HEADERS)) response.headers.set(key, value);
     }
     return response;

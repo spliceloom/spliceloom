@@ -30,6 +30,8 @@ export interface RateLimits {
   auth?: RateLimiter;
   /** Per client IP: admin API (coarse). */
   admin?: RateLimiter;
+  /** Per client IP: sign-up attempts. */
+  signup?: RateLimiter;
 }
 
 export const DEFAULT_RATE_LIMITS = {
@@ -37,6 +39,7 @@ export const DEFAULT_RATE_LIMITS = {
   authFailures: { limit: 20, periodSeconds: 600 },
   auth: { limit: 60, periodSeconds: 60 },
   admin: { limit: 30, periodSeconds: 60 },
+  signup: { limit: 10, periodSeconds: 600 },
 } as const;
 
 export class MemoryRateLimiter implements RateLimiter {
@@ -123,9 +126,10 @@ export interface RateLimitConfig {
 }
 
 /** The strongly consistent limits, backed by the registry database. */
-export function sqlRateLimits(db: SqlDatabase, config: RateLimitConfig = {}): Pick<RateLimits, "publish" | "authFailures"> {
+export function sqlRateLimits(db: SqlDatabase, config: RateLimitConfig = {}): Pick<RateLimits, "publish" | "authFailures" | "signup"> {
   return {
     publish: new SqlRateLimiter(db, "publish", config.publishPerMinute ?? DEFAULT_RATE_LIMITS.publish.limit, 60),
+    signup: new SqlRateLimiter(db, "signup", DEFAULT_RATE_LIMITS.signup.limit, DEFAULT_RATE_LIMITS.signup.periodSeconds),
     authFailures: new SqlRateLimiter(
       db,
       "auth-failure",

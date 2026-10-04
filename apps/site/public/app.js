@@ -1463,6 +1463,59 @@
     card.querySelector("[data-source]").textContent = `${src(d.source)} · updated ${ago(d.updatedAt)}`;
   };
 
+  // Publisher sign-up: a code in a public gist proves the GitHub account; the registry returns a token once.
+  const signup = () => {
+    const box = root.querySelector("[data-signup]");
+    const registry = (document.querySelector('meta[name="splice:registry"]')?.getAttribute("content") || "").replace(/\/$/, "");
+    if (!box || !registry) return;
+    const form = box.querySelector("[data-signup-form]");
+    const login = box.querySelector("[data-signup-login]");
+    const step = box.querySelector("[data-signup-step]");
+    const done = box.querySelector("[data-signup-done]");
+    const status = box.querySelector("[data-signup-status]");
+    const verify = box.querySelector("[data-signup-verify]");
+    let pending = null;
+    const call = async (path, body) => {
+      const r = await fetch(`${registry}${path}`, { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j.error && j.error.message) || `The registry answered ${r.status}.`);
+      return j;
+    };
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      status.textContent = "";
+      done.hidden = true;
+      try {
+        pending = await call("/signup/start", { github: login.value.trim() });
+        box.querySelector("[data-signup-code]").textContent = pending.code;
+        box.querySelector("[data-signup-copy]").setAttribute("data-copy", pending.code);
+        step.hidden = false;
+      } catch (error) {
+        step.hidden = true;
+        status.textContent = error.message || "Could not start. Try again.";
+      }
+    });
+    verify.addEventListener("click", async () => {
+      if (!pending) return;
+      verify.disabled = true;
+      status.textContent = "Checking the gist…";
+      try {
+        const r = await call("/signup/verify", { github: pending.github, code: pending.code });
+        box.querySelector("[data-signup-namespace]").textContent = `@${r.namespace}`;
+        box.querySelector("[data-signup-token]").textContent = r.token;
+        box.querySelector("[data-signup-token-copy]").setAttribute("data-copy", r.token);
+        step.hidden = true;
+        done.hidden = false;
+        status.textContent = "";
+        pending = null;
+      } catch (error) {
+        status.textContent = error.message || "Could not verify. Try again.";
+      } finally {
+        verify.disabled = false;
+      }
+    });
+  };
+
   // ------------------------------------------------------------------ /live: prediction markets
   const odds = async () => {
     const card = root.querySelector('[data-table="odds"]');
@@ -1695,7 +1748,10 @@
   const start = () => {
     if (kind === "stocks") stocks();
     else if (kind === "chain") odds();
-    else if (kind === "agents") agents();
+    else if (kind === "agents") {
+      agents();
+      signup();
+    }
     else if (kind === "screener") screener();
     else if (kind === "wallet") wallet();
     else if (kind === "explain") explain();

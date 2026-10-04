@@ -5,6 +5,7 @@
  */
 import { GitHubReleaseArtifactStore } from "./github.js";
 import { createRegistryHandler } from "./handler.js";
+import { githubIdentity } from "./signup.js";
 import { sqlRateLimits, type RateLimitConfig, type RateLimiter, type RateLimits } from "./ratelimit.js";
 import { RegistryService } from "./service.js";
 import type { ArtifactStore, SqlDatabase, SqlStatement, SqlValue } from "./storage.js";
@@ -258,6 +259,8 @@ export async function handleWorkerRequest(request: Request, env: Env, ctx?: Exec
   const db = d1Database(env.DB, usage);
   const service = new RegistryService(db, artifactStoreFor(env));
   const options: Parameters<typeof createRegistryHandler>[0] = { service, rateLimits: rateLimitsFor(env, db) };
+  // Sign-up reads public GitHub data; the artifact token (when set) only raises the rate limit.
+  options.identity = githubIdentity(env.GITHUB_TOKEN ? { token: env.GITHUB_TOKEN.trim() } : {});
   const legacy = legacyArtifactStoreFor(env);
   if (legacy) options.legacyArtifacts = legacy;
   // Secrets pasted via a shell may carry a trailing newline.

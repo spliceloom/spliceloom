@@ -1315,7 +1315,25 @@ export function renderAgents(config: SiteConfig, snapshot: RegistrySnapshot, ski
       </div>
 
       <h2 class="subhead mono">Publish yours</h2>
-      <p class="section-lead">Publishing to the Splice registry is free. While the registry is in developer preview, publisher accounts are issued on request: open an issue on GitHub and you get a token for your own namespace.</p>
+      <p class="section-lead">Publishing to the Splice registry is free. Prove your GitHub account with a public gist and you get a token for the namespace named after your username. No password, no app to authorize.</p>
+      <div class="signup-box" data-signup>
+        <form class="signup-row" data-signup-form>
+          <label class="registry-search"><span class="mono">GitHub username</span><input type="text" name="github" maxlength="39" placeholder="octocat" autocomplete="off" autocapitalize="off" spellcheck="false" required data-signup-login></label>
+          <button class="btn btn-solid" type="submit">Get a code</button>
+        </form>
+        <div data-signup-step hidden>
+          <p>Create a <strong>public</strong> gist on that account with this code as its description (the file can contain anything), then come back and verify. The code is valid for 30 minutes.</p>
+          <div class="install-row"><code data-signup-code></code><button type="button" class="copy-inline" data-copy="" data-signup-copy>Copy</button></div>
+          <p class="signup-row"><a class="btn btn-ghost btn-sm" href="https://gist.github.com/" target="_blank" rel="noopener noreferrer">Open gist.github.com</a><button type="button" class="btn btn-solid btn-sm" data-signup-verify>I created the gist: verify</button></p>
+        </div>
+        <div data-signup-done hidden>
+          <p>Verified. This is your registry token for <strong data-signup-namespace></strong>. It is shown once and not stored on this page: copy it now. You can delete the gist.</p>
+          <div class="install-row"><code data-signup-token></code><button type="button" class="copy-inline" data-copy="" data-signup-token-copy>Copy</button></div>
+          <p>Then, in a terminal: <code>splice login</code> and paste the token.</p>
+        </div>
+        <p class="mono" data-signup-status role="status"></p>
+      </div>
+      <p class="fine">The registry reads only the public profile and public gists of the username you enter. The GitHub account must be a personal account at least 30 days old. The token can publish only to your own namespace and expires after a year; verify again to get a new one.</p>
       <div class="cap-grid agents-steps">
         <article class="cap"><h3>1. Write</h3><p>A skill is a folder with a manifest, its tools and the permissions it needs.</p><a class="text-link" href="${link("docs/creating-a-skill")}">Creating a skill ${ARROW}</a></article>
         <article class="cap"><h3>2. Check</h3><p>Validate and package it locally. Nothing leaves your machine.</p><pre class="code"><code>cd my-skill
@@ -1325,7 +1343,7 @@ splice publish ./my-skill</code></pre></article>
         <article class="cap"><h3>4. Sign</h3><p>Sign versions with your own key so installs can verify who published them.</p><pre class="code"><code>splice keys generate
 splice publish --sign</code></pre></article>
       </div>
-      <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${e(config.githubUrl)}/issues" rel="noopener">Request a publisher account ${ARROW}</a></p>
+      <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${link("docs/auth")}">Tokens and namespaces ${ARROW}</a></p>
     </div>
   </section>`);
 }

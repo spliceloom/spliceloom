@@ -23,6 +23,9 @@ New tools on spliceloom.com ([docs](docs/web-tools.md)); no CLI release needed.
 - Prediction-market odds (Fed, inflation, stock events) on [/live](https://spliceloom.com/live) and in the bot
   (`/odds`), from Polymarket.
 - Discord interactions endpoint in the public API with the same commands as the Telegram bot.
+- [agents.spliceloom.com](https://agents.spliceloom.com): an open-source directory of agents, MCP servers and skills from
+  GitHub, the official skills, and free publisher sign-up with a GitHub account (a code in a public gist; the token is
+  limited to your own namespace). See [docs/auth.md](docs/auth.md).
 
 ## 0.3.0 — 2026-10-04
 

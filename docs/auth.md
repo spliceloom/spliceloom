@@ -22,6 +22,27 @@ Each token has:
 | `revokedAt` | Revoked tokens get `401`. |
 | `lastUsedAt` | Updated on every authenticated request. |
 
+### Sign-up with a GitHub account
+
+Anyone with a personal GitHub account can get a publisher token at
+[agents.spliceloom.com](https://agents.spliceloom.com), without a password or an OAuth app:
+
+1. Enter the GitHub username. The registry returns a one-time code (valid for 30 minutes).
+2. Create a **public gist** on that account with the code as its description.
+3. Verify. The registry reads the account's public profile and public gists from the GitHub API,
+   finds the code, and returns a token once.
+
+The account is named after the GitHub username (lowercase) and owns the namespace of the same name.
+The token is limited to that namespace (`namespaces: ["<username>"]`), expires after 365 days, and
+tokens created from it inherit that limit. Verifying again issues a new token for the same account.
+
+Refused: organizations and bots, GitHub accounts younger than 30 days, usernames that are not valid
+namespace names, and any username whose registry account or namespace already belongs to someone
+else (accounts created by an admin are never taken over). Sign-up is limited to 10 attempts per
+10 minutes per client.
+
+API: `POST /signup/start {"github": "<username>"}` then `POST /signup/verify {"github", "code"}`.
+
 ### Self-service tokens (CLI)
 
 ```sh
@@ -36,8 +57,8 @@ users can only see and revoke their own tokens (others' tokens are reported as n
 
 ### Admin
 
-There is no self-service sign-up or OAuth. An operator holding the **admin token** creates users
-and their first (full) token through the admin API.
+Besides GitHub sign-up, an operator holding the **admin token** can create users and their first
+(full) token through the admin API.
 
 - The Worker is configured with `ADMIN_TOKEN_SHA256` (a Cloudflare secret) — the hash, not the
   admin token itself. If it is unset the admin API is disabled (`403 ADMIN_DISABLED`).
