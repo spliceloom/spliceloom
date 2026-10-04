@@ -3,6 +3,16 @@
 Notable changes to the `splice` CLI (`@spliceloom/cli`) and the public registry. Official skills
 are versioned independently in the registry; their versions are listed per release.
 
+## 0.4.0 — 2026-10-04
+
+**Agent packages**
+- A package can declare an `agent` section: instructions plus the skills whose tools it may call.
+  `splice agent run <package> "<task>"` gives the model exactly those tools; each call runs in the
+  sandbox of the skill that owns the tool. `splice agent info` prints the instructions and tools.
+  See [docs/agents.md](docs/agents.md).
+- Official agents: `@splice/token-analyst` and `@splice/stock-token-desk` (signed).
+- Registry: search results carry `kind` (`skill` or `agent`), and `?kind=agent` filters.
+
 ## Website — 2026-10-04
 
 New tools on spliceloom.com ([docs](docs/web-tools.md)); no CLI release needed.

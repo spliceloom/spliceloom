@@ -64,6 +64,7 @@ result is shown as `● LIVE`, `○ CACHED` (not live; `--fresh` refetches), `�
 | `splice provider list \| health` | Registered providers with configuration state (no requests) / live health. |
 | `splice ask "<question>" [--model id] [--json]` | AI agent over live data: the model calls Splice's read-only tools (markets, stock tokens, oracle prices, wallets, chain, web, GitHub), shows each call and answers with its sources and cost. See [ask.md](ask.md). |
 | `splice chat` | Interactive conversation with the same agent. |
+| `splice agent run <pkg> "<task>"`, `splice agent info <pkg>` | Run an installed [agent package](agents.md): the model gets only the tools of the skills the agent lists. |
 | `splice ai models [--search q]` | Real model list (OpenRouter; Gemini when configured). |
 | `splice ai generate "<prompt>" [--model id] [--provider p] [--system s] [--max-tokens n] [--schema file]` | Real completion with usage and requested/actual provider and model. Billed by the provider. |
 | `splice github repo \| contents \| tree \| commits \| branches \| releases \| release \| issues \| pulls <owner/repo>` | GitHub REST API (token or anonymous), read-only. |

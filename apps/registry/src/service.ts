@@ -39,6 +39,7 @@ import {
   type VersionResponse,
   type VersionsResponse,
   type WhoamiResponse,
+  type PackageKind,
 } from "@spliceloom/spec";
 import { generateToken, hashToken } from "./auth.js";
 import { GITHUB_LOGIN_PATTERN, SIGNUP_CHALLENGE_MINUTES, SIGNUP_MIN_ACCOUNT_AGE_DAYS, SIGNUP_TOKEN_DAYS, newSignupCode, type GitHubAccount, type GitHubIdentity } from "./signup.js";
@@ -137,6 +138,7 @@ function toTokenInfo(row: TokenRow): TokenInfo {
 }
 
 interface PackageRow {
+  kind: string;
   id: string;
   namespace: string;
   name: string;
@@ -277,18 +279,18 @@ export class RegistryService {
 
   // ---------------------------------------------------------------- reading
 
-  async search(query: string, limit = 20): Promise<SearchResponse> {
+  async search(query: string, limit = 20, kind?: PackageKind): Promise<SearchResponse> {
     const q = query.trim().toLowerCase().slice(0, 100);
     const capped = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
     const pattern = `%${escapeLike(q)}%`;
     const rows = await this.db.all<PackageRow>(
       `SELECT * FROM packages
-       WHERE id LIKE ? ESCAPE '\\' OR lower(description) LIKE ? ESCAPE '\\'
+       WHERE (id LIKE ? ESCAPE '\\' OR lower(description) LIKE ? ESCAPE '\\')${kind ? " AND kind = ?" : ""}
        ORDER BY CASE WHEN name = ? THEN 0 WHEN name LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END, id
        LIMIT ?`,
-      [pattern, pattern, q, `${escapeLike(q)}%`, capped],
+      [pattern, pattern, ...(kind ? [kind] : []), q, `${escapeLike(q)}%`, capped],
     );
-    return { query: q, results: rows.map((r) => ({ name: r.id, description: r.description, latest: r.latest_version })) };
+    return { query: q, results: rows.map((r) => ({ name: r.id, description: r.description, latest: r.latest_version, kind: r.kind === "agent" ? "agent" : "skill" })) };
   }
 
   private async packageRow(idInput: string): Promise<PackageRow> {
@@ -908,11 +910,12 @@ export class RegistryService {
     try {
       await this.db.batch([
         {
-          sql: `INSERT INTO packages (id, namespace, name, description, latest_version, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+          sql: `INSERT INTO packages (id, namespace, name, description, latest_version, created_at, updated_at, kind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET description = excluded.description,
-                  latest_version = excluded.latest_version, updated_at = excluded.updated_at`,
-          params: [id, manifest.namespace, manifest.name, description, latest, stamp, stamp],
+                  latest_version = excluded.latest_version, updated_at = excluded.updated_at, kind = excluded.kind`,
+          // Like the description, the kind follows the manifest of the latest version.
+          params: [id, manifest.namespace, manifest.name, description, latest, stamp, stamp, !existing || latest === manifest.version ? (manifest.agent ? "agent" : "skill") : existing.kind],
         },
         {
           sql: `INSERT INTO versions (package_id, version, manifest, integrity, size, artifact_key, artifact_backend, artifact_url, published_by, published_at, provenance)

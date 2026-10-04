@@ -68,6 +68,7 @@ non-empty UTF-8 text without NUL bytes (≤ 256 KiB); each file ≤ 2 MiB.
 | `permissions` | no | See below. Omitted = no permissions. |
 | `tools` | yes | Non-empty array of tool definitions with unique names. |
 | `dependencies` | no | **Reserved.** `{ "@ns/name": "<range>" }`, validated (package ids, ranges except `latest`, no self-dependency) but not supported yet: the registry rejects packages that declare dependencies. See [trust.md](trust.md#dependencies). |
+| `agent` | no | Makes the package an [agent package](agents.md): `instructions`, `skills`, optional `model` and `examples`. `tools` may then be empty. |
 | `x-*` | no | Extension fields are allowed and ignored. Any other unknown field is an error. |
 
 ### Tool definition

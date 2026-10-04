@@ -306,6 +306,22 @@ Examples:
   splice ask "Which tokens are losing volume right now?"
   splice ask "Inspect wallet 0x... on Robinhood Chain"`,
 
+  agent: `Usage: splice agent run <@namespace/name> "<task>" [--model <id>] [--provider <name>] [--max-tokens <n>] [--max-steps <n>] [--json]
+       splice agent info <@namespace/name> [--json]
+
+Run an installed agent package. An agent package declares instructions and the skills whose tools
+it may call (the \`agent\` section of manifest.json). The model gets exactly those tools; each call
+runs in the sandbox of the skill that owns the tool, under that skill's permissions. The agent has
+no permissions of its own and never sees a provider key. Skills it lists must be installed first
+(the command prints the \`splice add\` lines when they are not).
+
+\`info\` prints the instructions, the skills and every tool the agent can call.
+
+Examples:
+  splice add @splice/robinhood --accept-permissions
+  splice add @splice/token-analyst
+  splice agent run @splice/token-analyst "Research PONS on Robinhood Chain"`,
+
   chat: `Usage: splice chat [--model <id>] [--provider <name>]
 
 Interactive conversation with the same live-data agent as \`splice ask\` (it remembers the
@@ -486,6 +502,7 @@ Dashboard and research:
 
 Ask (AI over live data):
   ask "<question>"           Ask anything: markets, stocks, wallets, chain, web, GitHub (tools + sources)
+  agent run <pkg> "<task>"   Run an installed agent package with the tools of its skills
   chat                       Interactive conversation with the same agent
 
 Live data (real providers only; Robinhood Chain is the default chain):

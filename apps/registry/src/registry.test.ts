@@ -313,7 +313,7 @@ describe("registry", () => {
     it("searches by name and description", async () => {
       const res = await api<SearchResponse>("GET", "/packages/search?q=github");
       assert.equal(res.status, 200);
-      assert.deepEqual(res.body.results, [{ name: "@alice/github", description: "GitHub v3", latest: "0.3.0" }]);
+      assert.deepEqual(res.body.results, [{ name: "@alice/github", description: "GitHub v3", latest: "0.3.0", kind: "skill" }]);
       assert.deepEqual((await api<SearchResponse>("GET", "/packages/search?q=automation")).body.results.map((r) => r.name), ["@bob/browser"]);
       assert.deepEqual((await api<SearchResponse>("GET", "/packages/search?q=zzz")).body.results, []);
     });

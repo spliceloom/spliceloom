@@ -206,7 +206,9 @@ export function createRegistryHandler(options: HandlerOptions): (request: Reques
 
       if (first === "packages" && method === "GET") {
         if (n === 2 && a === "search") {
-          return json(await service.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit") ?? "20")));
+          const kind = url.searchParams.get("kind");
+          if (kind !== null && kind !== "skill" && kind !== "agent") throw new RegistryError("BAD_REQUEST", 400, '"kind" must be skill or agent');
+          return json(await service.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit") ?? "20"), kind ?? undefined));
         }
         if (n >= 3 && a && b) {
           const id = formatPackageId(a, b);

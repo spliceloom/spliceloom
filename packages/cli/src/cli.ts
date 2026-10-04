@@ -76,6 +76,7 @@ function keyFlags(values: Record<string, unknown>): KeyFlags {
   if (typeof values.dir === "string") flags.dir = values.dir;
   return flags;
 }
+import { agentCommand, type AgentFlags } from "./commands/agent.js";
 import { askCommand, chatCommand, type AskFlags } from "./commands/ask.js";
 import { dashCommand, globalCommand, macroCommand, newsCommand, perpsCommand, tokensCommand } from "./commands/markets.js";
 import { compareCommand, radarCommand, reportCommand, watchCommand, watchlistCommand } from "./commands/pro.js";
@@ -119,6 +120,7 @@ const OPTIONS = {
   provider: { type: "string" },
   system: { type: "string" },
   "max-tokens": { type: "string" },
+  "max-steps": { type: "string" },
   temperature: { type: "string" },
   search: { type: "string" },
   "no-fallback": { type: "boolean" },
@@ -192,6 +194,7 @@ export const COMMAND_OPTIONS: Record<string, string[]> = {
   setup: ["template", "init"],
   ask: ["model", "provider", "max-tokens"],
   chat: ["model", "provider", "max-tokens"],
+  agent: ["model", "provider", "max-tokens", "max-steps"],
   stock: ["fresh", "limit", "session", "search", "window", "min-liquidity"],
   oracle: ["fresh", "limit", "search", "session", "timeframe"],
   defi: ["fresh", "limit", "search", "sort", "min-liquidity", "timeframe"],
@@ -379,6 +382,14 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         if (values.provider !== undefined) flags.provider = values.provider;
         if (values["max-tokens"] !== undefined) flags.maxTokens = values["max-tokens"];
         return command === "ask" ? await askCommand(ctx, rest, flags) : await chatCommand(ctx, rest, flags);
+      }
+      case "agent": {
+        const flags: AgentFlags = {};
+        if (values.model !== undefined) flags.model = values.model;
+        if (values.provider !== undefined) flags.provider = values.provider;
+        if (values["max-tokens"] !== undefined) flags.maxTokens = values["max-tokens"];
+        if (values["max-steps"] !== undefined) flags.maxSteps = values["max-steps"];
+        return await agentCommand(ctx, rest, flags);
       }
       case "stock":
         return await stockCommand(ctx, rest, liveFlags(values));

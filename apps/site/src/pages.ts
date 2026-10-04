@@ -1300,6 +1300,10 @@ export function renderAgents(config: SiteConfig, snapshot: RegistrySnapshot, ski
         <p class="section-lead">Verified skills you can install with one command, an open-source directory of agents, MCP servers and skills, and free publishing to the Splice registry. Browsing needs no account, and nothing here costs anything.</p>
       </div>
 
+      <h2 class="subhead mono">Agents on Splice</h2>
+      <p class="section-lead">An agent package is instructions plus the skills whose tools it may call. It has no permissions of its own: every call runs in the sandbox of the skill that owns the tool.</p>
+      <div class="agent-grid" data-agents-list><p class="muted">Loading…</p></div>
+
       <h2 class="subhead mono">Open-source directory</h2>
       <div class="screener-filters">
         <div class="tf-switch" data-agents-tabs role="group" aria-label="Category"></div>
@@ -1343,7 +1347,7 @@ splice publish ./my-skill</code></pre></article>
         <article class="cap"><h3>4. Sign</h3><p>Sign versions with your own key so installs can verify who published them.</p><pre class="code"><code>splice keys generate
 splice publish --sign</code></pre></article>
       </div>
-      <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${link("docs/auth")}">Tokens and namespaces ${ARROW}</a></p>
+      <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${link("docs/agents")}">Agent packages ${ARROW}</a><a class="text-link" href="${link("docs/auth")}">Tokens and namespaces ${ARROW}</a></p>
     </div>
   </section>`);
 }

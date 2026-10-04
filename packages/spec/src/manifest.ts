@@ -36,6 +36,26 @@ export interface RuntimeInfo {
   minNodeVersion?: string;
 }
 
+export const MAX_AGENT_INSTRUCTIONS = 8000;
+export const MAX_AGENT_SKILLS = 20;
+export const MAX_AGENT_EXAMPLES = 6;
+
+/**
+ * An agent: instructions plus the skills whose tools it may call. The package that declares it
+ * needs no tools of its own. The agent holds no keys and gets no permissions: every tool call
+ * runs in the sandbox of the skill that owns the tool, under that skill's own permissions.
+ */
+export interface AgentDefinition {
+  /** The agent's system instructions (plain text). */
+  instructions: string;
+  /** Packages (`@namespace/name`) whose tools the agent may call. They must be installed to run it. */
+  skills: string[];
+  /** Preferred model id; the host may use another one. */
+  model?: string;
+  /** Example prompts, shown on the agent's page. */
+  examples?: string[];
+}
+
 export interface Manifest {
   specVersion: 1;
   namespace: string;
@@ -47,8 +67,45 @@ export interface Manifest {
   runtime: RuntimeInfo;
   permissions: Permissions;
   tools: ToolDefinition[];
+  /** Present on agent packages; `tools` may then be empty. */
+  agent?: AgentDefinition;
   /** Reserved for future dependency support; see validateDependencies. */
   dependencies?: Record<string, string>;
+}
+
+const AGENT_KEYS = new Set(["instructions", "skills", "model", "examples"]);
+
+function validateAgent(raw: unknown, selfId: string, errors: string[]): AgentDefinition | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    errors.push("agent: must be an object");
+    return undefined;
+  }
+  for (const key of Object.keys(raw)) if (!AGENT_KEYS.has(key) && !isExtensionKey(key)) errors.push(`agent.${key}: unknown field`);
+  const instructions = requireString(raw, "instructions", "agent.", errors, MAX_AGENT_INSTRUCTIONS);
+  const skills: string[] = [];
+  if (!Array.isArray(raw.skills)) errors.push("agent.skills: must be an array of package ids (it may be empty)");
+  else {
+    if (raw.skills.length > MAX_AGENT_SKILLS) errors.push(`agent.skills: at most ${MAX_AGENT_SKILLS} packages`);
+    for (const id of raw.skills) {
+      const match = typeof id === "string" ? /^@([^/]+)\/([^/]+)$/.exec(id) : null;
+      if (!match || !isValidNameSegment(match[1]!) || !isValidNameSegment(match[2]!)) errors.push(`agent.skills: invalid package name ${JSON.stringify(id)}`);
+      else if (id === selfId) errors.push(`agent.skills: an agent cannot list itself (${selfId})`);
+      else if (skills.includes(id as string)) errors.push(`agent.skills: duplicate package "${id}"`);
+      else skills.push(id as string);
+    }
+  }
+  const agent: AgentDefinition = { instructions, skills };
+  if (raw.model !== undefined) {
+    if (typeof raw.model !== "string" || raw.model.trim().length === 0 || raw.model.length > 100) errors.push("agent.model: must be a non-empty string of at most 100 characters");
+    else agent.model = raw.model;
+  }
+  if (raw.examples !== undefined) {
+    if (!Array.isArray(raw.examples) || raw.examples.length > MAX_AGENT_EXAMPLES || !raw.examples.every((x) => typeof x === "string" && x.trim().length > 0 && x.length <= 300)) {
+      errors.push(`agent.examples: must be at most ${MAX_AGENT_EXAMPLES} non-empty strings of up to 300 characters`);
+    } else agent.examples = raw.examples as string[];
+  }
+  return agent;
 }
 
 const TOP_LEVEL_KEYS = new Set([
@@ -62,6 +119,7 @@ const TOP_LEVEL_KEYS = new Set([
   "runtime",
   "permissions",
   "tools",
+  "agent",
   "dependencies",
 ]);
 
@@ -244,7 +302,11 @@ export function validateManifest(raw: unknown): ValidationResult<Manifest> {
   const permissions = normalizePermissions(raw.permissions, errors);
 
   const tools: ToolDefinition[] = [];
-  if (!Array.isArray(raw.tools) || raw.tools.length === 0) {
+  // An agent package may have no tools of its own; every other package needs at least one.
+  const toolless = raw.agent !== undefined && (raw.tools === undefined || (Array.isArray(raw.tools) && raw.tools.length === 0));
+  if (toolless) {
+    // nothing to validate
+  } else if (!Array.isArray(raw.tools) || raw.tools.length === 0) {
     errors.push("tools: must be a non-empty array");
   } else {
     raw.tools.forEach((t, i) => {
@@ -257,13 +319,16 @@ export function validateManifest(raw: unknown): ValidationResult<Manifest> {
     });
   }
 
-  const dependencies = validateDependencies(raw.dependencies, namespace && name ? formatPackageId(namespace, name) : "", errors);
+  const selfId = namespace && name ? formatPackageId(namespace, name) : "";
+  const agent = validateAgent(raw.agent, selfId, errors);
+  const dependencies = validateDependencies(raw.dependencies, selfId, errors);
 
   if (errors.length > 0) return { ok: false, errors };
 
   const manifest: Manifest = { specVersion: 1, namespace, name, version, description, runtime, permissions, tools };
   if (license !== undefined) manifest.license = license;
   if (homepage !== undefined) manifest.homepage = homepage;
+  if (agent !== undefined) manifest.agent = agent;
   if (dependencies !== undefined) manifest.dependencies = dependencies;
   return { ok: true, value: manifest };
 }

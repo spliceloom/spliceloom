@@ -39,6 +39,25 @@ export interface AgentOptions {
   exclude?: Iterable<string>;
   /** Called as each tool result arrives. */
   onCall?: (call: AgentCall) => void;
+  /**
+   * Replaces the live-data tools with the caller's own (for example the tools of installed skills).
+   * `run` executes one call and never throws for a tool failure: it reports it in `status`.
+   */
+  toolset?: { tools: AiTool[]; run: (name: string, args: Record<string, unknown>) => Promise<{ result: unknown; status: string; source?: string }> };
+}
+
+/** Runs one call of a caller-provided toolset. */
+async function runCustomTool(toolset: NonNullable<AgentOptions["toolset"]>, name: string, rawArgs: string): Promise<{ call: AgentCall; result: unknown }> {
+  let args: Record<string, unknown> = {};
+  try {
+    const parsed = rawArgs.trim() ? JSON.parse(rawArgs) : {};
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+  } catch {
+    return { call: { name, args, status: "ERROR" }, result: { status: "ERROR", code: "INVALID_INPUT", message: "arguments were not valid JSON" } };
+  }
+  if (!toolset.tools.some((t) => t.name === name)) return { call: { name, args, status: "ERROR" }, result: { status: "ERROR", code: "UNKNOWN_TOOL", message: `no tool named ${name}` } };
+  const r = await toolset.run(name, args);
+  return { call: { name, args, status: r.status, ...(r.source ? { source: r.source } : {}) }, result: r.result };
 }
 
 function allowed(exclude?: Iterable<string>): (name: string) => boolean {
@@ -123,7 +142,7 @@ async function runTool(data: SpliceData, ok: (name: string) => boolean, name: st
  */
 export async function runAgentTurn(data: SpliceData, messages: AiMessage[], options: AgentOptions = {}): Promise<AgentTurn | { failure: DataResult<unknown> } | { error: string }> {
   const ok = allowed(options.exclude);
-  const tools = agentTools(options.exclude);
+  const tools = options.toolset?.tools ?? agentTools(options.exclude);
   const maxSteps = options.maxSteps ?? 8;
   const calls: AgentCall[] = [];
   let costUsd = 0;
@@ -145,7 +164,8 @@ export async function runAgentTurn(data: SpliceData, messages: AiMessage[], opti
       return { answer, calls, costUsd, ...(model ? { model } : {}) };
     }
     messages.push({ role: "assistant", content: result.data.text ?? "", toolCalls });
-    const results = await Promise.all(toolCalls.map((c) => runTool(data, ok, c.name, c.arguments)));
+    const toolset = options.toolset;
+    const results = await Promise.all(toolCalls.map((c) => (toolset ? runCustomTool(toolset, c.name, c.arguments) : runTool(data, ok, c.name, c.arguments))));
     toolCalls.forEach((c, i) => {
       const r = results[i]!;
       calls.push(r.call);

@@ -39,10 +39,15 @@ export interface HealthResponse {
   apiVersion: number;
 }
 
+/** "agent": the latest version declares an `agent` section. Everything else is a skill. */
+export type PackageKind = "skill" | "agent";
+
 export interface SearchResult {
   name: string;
   description: string;
   latest: string;
+  /** Absent on registries older than agent packages. */
+  kind?: PackageKind;
 }
 
 export interface SearchResponse {

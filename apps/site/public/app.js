@@ -1463,6 +1463,51 @@
     card.querySelector("[data-source]").textContent = `${src(d.source)} · updated ${ago(d.updatedAt)}`;
   };
 
+  // Agent packages published to the registry (kind=agent), each with its instructions and skills.
+  const agentPackages = async () => {
+    const list = root.querySelector("[data-agents-list]");
+    const registry = (document.querySelector('meta[name="splice:registry"]')?.getAttribute("content") || "").replace(/\/$/, "");
+    if (!list || !registry) return;
+    const read = async (path) => {
+      const r = await fetch(`${registry}${path}`, { credentials: "omit" });
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    };
+    let found;
+    try {
+      found = (await read("/packages/search?q=&kind=agent&limit=50")).results;
+    } catch {
+      return list.replaceChildren(el("p", "The registry is unavailable right now.", "muted"));
+    }
+    if (!found.length) return list.replaceChildren(el("p", "No agent packages yet.", "muted"));
+    const cards = await Promise.all(found.map(async (p) => {
+      const m = /^@([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(p.name);
+      if (!m || !/^[0-9A-Za-z.+-]+$/.test(p.latest)) return null;
+      let v;
+      try {
+        v = await read(`/packages/${m[1]}/${m[2]}/${p.latest}`);
+      } catch {
+        return null;
+      }
+      const agent = v.manifest && v.manifest.agent;
+      if (!agent) return null;
+      const card = el("article", undefined, "agent-card");
+      const head = el("header");
+      head.append(el("h3", p.name, "mono"), el("span", `v${p.latest}`, "skill-version mono"));
+      const facts = el("p", undefined, "agent-facts mono");
+      facts.textContent = `by ${v.publishedBy || "?"} · ${(v.signatures || []).length ? `signed by ${v.signatures[0].keyId}` : "unsigned"} · uses ${agent.skills.join(", ") || "no skills"}`;
+      const details = el("details");
+      details.append(el("summary", "Instructions"), el("pre", agent.instructions, "agent-instructions"));
+      const install = [...agent.skills.map((s) => `splice add ${s} --accept-permissions`), `splice add ${p.name}`, `splice agent run ${p.name} ${JSON.stringify((agent.examples && agent.examples[0]) || "your task")}`].join("\n");
+      const code = el("pre", undefined, "code");
+      code.append(el("code", install));
+      card.append(head, el("p", p.description, "skill-desc"), facts, code, details);
+      return card;
+    }));
+    const shown = cards.filter(Boolean);
+    list.replaceChildren(...(shown.length ? shown : [el("p", "No agent packages yet.", "muted")]));
+  };
+
   // Publisher sign-up: a code in a public gist proves the GitHub account; the registry returns a token once.
   const signup = () => {
     const box = root.querySelector("[data-signup]");
@@ -1750,6 +1795,7 @@
     else if (kind === "chain") odds();
     else if (kind === "agents") {
       agents();
+      agentPackages();
       signup();
     }
     else if (kind === "screener") screener();
