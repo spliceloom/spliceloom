@@ -406,7 +406,7 @@ export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "backgro
       stamp(
         await cachedJson(
           cacheCtx(),
-          "odds:v1",
+          "odds:v2",
           10 * 60_000,
           async () => {
             const symbols = await stocks().then((s) => (s.tokens as Array<{ symbol: string }>).map((t) => t.symbol), () => [] as string[]);
@@ -420,7 +420,7 @@ export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "backgro
       const tickers = (await cachedJson(cacheCtx(), "sec:tickers:v1", 7 * 86_400_000, () => secTickers(external()), (v) => Object.keys(v).length > 1000)).value;
       const cik = tickers[symbol];
       if (!cik) return null;
-      return stamp(await cachedJson(cacheCtx(), `filings:${symbol}`, 30 * 60_000, () => secFilings(external(), symbol, cik), (v) => (v.filings as unknown[]).length > 0));
+      return stamp(await cachedJson(cacheCtx(), `filings:v2:${symbol}`, 30 * 60_000, () => secFilings(external(), symbol, cik), (v) => (v.filings as unknown[]).length > 0));
     },
     screener: async () => stamp(await cachedJson(cacheCtx(), "screener:v1", 3 * 60_000, () => screener(options.data()), (v) => (v.tokens as unknown[]).length > 0)),
     live: () => tokenLive(options.data(), cacheCtx()),
