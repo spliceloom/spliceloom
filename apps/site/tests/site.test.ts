@@ -183,7 +183,7 @@ describe("website build against a registry", () => {
     for (const file of ["registry.html", "brand.html", "blog.html", "blog/introducing-splice.html", "assets/video/how-it-works.mp4", "assets/video/how-it-works.jpg", "assets/brand/splice-mark.svg", "assets/brand/splice-avatar.png"]) assert.ok(result.files.includes(file), file);
     for (const file of ["changelog.html", "assets/video/tokens.mp4"]) assert.ok(result.docsFiles.includes(file), `docs: ${file}`);
     const home = read("index.html");
-    assert.match(home, /class="news-pill" href="https:\/\/docs\.example\.test\/changelog"/);
+    assert.match(home, /class="news-pill" href="[^"]*\bbot"/);
     assert.match(home, /<section class="section section-rule" id="watch"[\s\S]*?<video controls playsinline preload="none"/);
     assert.match(home, /id="why"[\s\S]*?With Splice/);
     assert.doesNotMatch(home, /<video[^>]*autoplay(?![^>]*hero-video)[^>]*controls/, "demo videos never autoplay");

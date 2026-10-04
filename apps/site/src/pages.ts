@@ -174,7 +174,7 @@ function footer(loc: PageLoc, config: SiteConfig): string {
       <nav class="footer-cols" aria-label="Footer">
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
-        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "widgets")}">Widgets</a></div>
+        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "widgets")}">Widgets</a><a href="${href(config, loc, "bot")}">Telegram bot</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
         <div><h2>Project</h2><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
@@ -247,7 +247,7 @@ const STEPS: Array<[string, string, string]> = [
 const FEATURED_SKILLS = ["@splice/robinhood", "@splice/onchain", "@splice/market", "@splice/web"];
 
 /** The latest release, shown as a pill on the landing page (keep in step with CHANGELOG.md). */
-export const WHATS_NEW = { label: "New", text: "Signed packages · live chain page · CLI 0.3.0", path: "docs/changelog" };
+export const WHATS_NEW = { label: "New", text: "Telegram bot · SEC filings · prediction-market odds", path: "bot" };
 
 /** Demo videos (apps/site/public/video): real CLI recordings, no sound. */
 export const VIDEOS: Record<string, { title: string; caption: string }> = {
@@ -660,6 +660,25 @@ ${header(loc, "home", config)}
       <dl class="fact-list reveal">
         ${ROBINHOOD_FACTS.map(([k, v]) => `<div><dt class="mono">${e(k)}</dt><dd>${e(v)}</dd></div>`).join("")}
       </dl>
+    </div>
+  </section>
+
+  <section class="section section-rule" id="tools" aria-labelledby="tools-title">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">On the web</p><h2 id="tools-title">Use it without installing anything.</h2></div>
+        <p class="section-lead">The same data the CLI, SDK and MCP servers return, in the browser and in Telegram. Every panel names its source and how fresh it is.</p>
+      </div>
+      <div class="cap-grid">
+        <article class="cap reveal"><h3>Live chain</h3><p>Robinhood Chain right now: TVL, stock tokens, perps, DeFi protocols, prediction-market odds and the newest pools.</p><a class="text-link" href="${link("live")}">Open /live ${ARROW}</a></article>
+        <article class="cap reveal"><h3>Stock tokens</h3><p>The DEX price of each stock token next to its reference price, with the premium or discount, and the company's latest SEC filings.</p><a class="text-link" href="${link("stocks")}">Open /stocks ${ARROW}</a></article>
+        <article class="cap reveal"><h3>New token screener</h3><p>The newest pools with automated security flags, liquidity, volume and age. Filter by liquidity or hide flagged tokens.</p><a class="text-link" href="${link("screener")}">Open /screener ${ARROW}</a></article>
+        <article class="cap reveal"><h3>Contract explainer</h3><p>A contract's verified functions and security flags, explained in plain English.</p><a class="text-link" href="${link("explain")}">Open /explain ${ARROW}</a></article>
+        <article class="cap reveal"><h3>Wallet viewer</h3><p>What any address holds, what it is worth where a price source lists the token, and its recent transfers.</p><a class="text-link" href="${link("wallet")}">Open /wallet ${ARROW}</a></article>
+        <article class="cap reveal"><h3>Ask</h3><p>Questions in plain English, answered from live data with every tool call and source shown.</p><a class="text-link" href="${link("ask")}">Open /ask ${ARROW}</a></article>
+        <article class="cap reveal"><h3>$SPLICE</h3><p>Live price from the pool, candles, trades, holders, burns and an on-chain transparency panel.</p><a class="text-link" href="${link("token")}">Open /token ${ARROW}</a></article>
+        <article class="cap reveal"><h3>Telegram bot</h3><p>All of the above as commands, plus alerts sent to your chat: price levels, large trades, burns, new tokens.</p><a class="text-link" href="${link("bot")}">Meet the bot ${ARROW}</a></article>
+      </div>
     </div>
   </section>
 
@@ -1099,7 +1118,7 @@ export function renderToken(config: SiteConfig): string {
 export function renderLive(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };
   const table = (key: string, title: string, cols: string[]) => `<div class="live-card" data-table="${key}"><h2>${e(title)}</h2><table><thead><tr>${cols.map((c) => `<th>${e(c)}</th>`).join("")}</tr></thead><tbody><tr><td colspan="${cols.length}" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>`;
-  return sitePage(config, loc, { title: "Robinhood Chain live — Splice", description: "Robinhood Chain right now: TVL, stock tokens, perpetuals, DeFi protocols and new pools, live from public sources through Splice.", path: "live", bodyClass: "live-page" }, `
+  return sitePage(config, loc, { title: "Robinhood Chain live — Splice", description: "Robinhood Chain right now: TVL, stock tokens, perpetuals, DeFi protocols, prediction-market odds and new pools, live from public sources through Splice.", path: "live", bodyClass: "live-page" }, `
   <section class="section" data-live="chain" data-api="${e(config.api ?? "")}">
     <div class="shell">
       <div class="section-head split-head">
@@ -1129,12 +1148,12 @@ export function renderLive(config: SiteConfig): string {
 /** Robinhood stock tokens: DEX price vs Robinhood's reference price for the token. */
 export function renderStocks(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };
-  return sitePage(config, loc, { title: "Stock token premiums — Splice", description: "Robinhood stock tokens on Robinhood Chain: the DEX price next to Robinhood's reference price, with the premium or discount for each.", path: "stocks", bodyClass: "live-page" }, `
+  return sitePage(config, loc, { title: "Stock token premiums — Splice", description: "Robinhood stock tokens on Robinhood Chain: the DEX price next to Robinhood's reference price, with the premium or discount for each, and the company's latest SEC filings.", path: "stocks", bodyClass: "live-page" }, `
   <section class="section" data-live="stocks" data-api="${e(config.api ?? "")}">
     <div class="shell">
       <div class="section-head split-head">
         <div><p class="kicker">Stock tokens</p><h1 class="display">Premium or discount?</h1></div>
-        <p class="section-lead">Each Robinhood stock token trades in a DEX pool on Robinhood Chain. This table puts that price next to Robinhood's own reference price for the token and shows the gap.</p>
+        <p class="section-lead">Each Robinhood stock token trades in a DEX pool on Robinhood Chain. This table puts that price next to Robinhood's own reference price for the token and shows the gap. Below it: the latest SEC filings of the company behind each token.</p>
       </div>
       <div class="live-card" data-table="premiums"><table><thead><tr><th>Token</th><th>DEX price</th><th>Reference</th><th>Premium</th><th>24h</th><th>Volume 24h</th><th>Liquidity</th></tr></thead><tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>
       <p class="fine">Premium = DEX price ÷ reference price − 1. While Robinhood quotes a token tightly (bid and ask within 2%), the reference is the middle of that quote. When the US market is closed the quote widens, so the reference becomes the stock's last close (Finnhub) × the token's multiplier, marked "last close". Only tokens at the contract address Robinhood lists are shown; DEX prices come from the deepest pool per token. Not financial advice.</p>
@@ -1256,6 +1275,33 @@ export function renderEmbed(config: SiteConfig): string {
 }
 
 /** How to embed the $SPLICE card. */
+/** The Telegram bot: what it answers and which alerts it sends. */
+export function renderBot(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  const BOT = "https://t.me/spliceloombot";
+  const group = (title: string, rows: Array<[string, string]>) =>
+    `<div class="live-card"><h2>${e(title)}</h2><table><thead><tr><th>Command</th><th>What you get</th></tr></thead><tbody>${rows.map(([c, d]) => `<tr><td class="strong mono">${e(c)}</td><td>${e(d)}</td></tr>`).join("")}</tbody></table></div>`;
+  return sitePage(config, loc, { title: "Telegram bot — Splice", description: "The Splice Telegram bot: live Robinhood Chain data as commands, and alerts for price levels, large trades, burns and new tokens.", path: "bot", bodyClass: "live-page" }, `
+  <section class="section">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Telegram bot</p><h1 class="display">Splice, in your chat.</h1></div>
+        <p class="section-lead">Press Start and it introduces itself by your name. It answers from the same live data as this site, names the source of every number, and can message your chat when something happens. Free, and it works in groups.</p>
+      </div>
+      <p class="more"><a class="btn btn-solid" href="${BOT}" rel="noopener">Open @spliceloombot</a></p>
+      <div class="bot-grid">
+        ${group("$SPLICE", [["/splice", "Price, market cap, liquidity, volume, holders, burned"], ["/holders", "Top holders and the dev wallet"], ["/burned", "How much is burned so far"], ["/ca", "The official contract address"]])}
+        ${group("Robinhood Chain", [["/tvl", "Total value locked and its change"], ["/perps", "Perpetual markets by volume"], ["/new", "Newest tokens with security flags"], ["/odds", "Prediction-market odds: Fed, inflation, stock events"]])}
+        ${group("Stock tokens", [["/stocks", "Every stock token: premium or discount against the reference price"], ["/stock NVDA", "One stock token: token and underlying quote"], ["/filings NVDA", "The company's latest SEC filings"]])}
+        ${group("Any address", [["/check 0x…", "Verified-source status and security flags of a token contract"], ["/wallet 0x…", "What a wallet holds"], ["/ask <question>", "A question in plain English, answered with sources"]])}
+        ${group("Alerts, sent to your chat", [["/alert above 0.00002", "$SPLICE price crosses a level (also: below)"], ["/whales on 100", "$SPLICE trades of $100 or more"], ["/burns on", "Every new $SPLICE burn"], ["/radar on 10000", "New tokens with $10,000+ liquidity"], ["/alerts", "Your alerts; remove one with /alertoff"]])}
+      </div>
+      <p class="fine">Alerts are checked every 2 minutes; up to 10 per chat. /ask is limited to 10 questions per chat per day. Security flags are automated checks, not an audit. New tokens are listed automatically and are not reviewed or endorsed by Splice. Market data, not financial advice.</p>
+      <p class="more"><a class="text-link" href="${href(config, loc, "docs/web-tools")}">How the bot and the web tools work ${ARROW}</a><a class="text-link" href="${href(config, loc, "live")}">Robinhood Chain live ${ARROW}</a></p>
+    </div>
+  </section>`);
+}
+
 export function renderWidgets(config: SiteConfig): string {
   const loc: PageLoc = { host: "site", dir: "" };
   const base = config.siteUrl.replace(/\/$/, "");

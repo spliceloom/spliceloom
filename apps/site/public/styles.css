@@ -3649,6 +3649,32 @@ pre.code:hover .copy-button,
   white-space: normal;
   vertical-align: top;
 }
+.bot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 26px 0 18px;
+}
+.bot-grid .live-card {
+  margin: 0;
+}
+.bot-grid .live-card > table td {
+  white-space: normal;
+  vertical-align: top;
+}
+.bot-grid .live-card > table td.mono {
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.bot-grid .live-card:last-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 820px) {
+  .bot-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .fine + .live-card {
   margin-top: 28px;
 }
