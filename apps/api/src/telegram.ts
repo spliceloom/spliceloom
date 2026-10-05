@@ -4,7 +4,7 @@
  * the scheduled job in telegram-alerts.ts. Plain text only: nothing a user sends is interpreted as
  * markup, and names are shown as text.
  */
-export type AlertKind = "above" | "below" | "whale" | "burn" | "radar";
+export type AlertKind = "above" | "below" | "whale" | "burn" | "radar" | "premium";
 
 export interface AlertRow {
   id: number;
@@ -36,9 +36,23 @@ export interface TelegramDeps {
   /** Prediction-market odds (Polymarket). */
   odds?: () => Promise<Record<string, any>>;
   alerts?: AlertStore;
+  /** The wallet linked to a chat and whether it holds enough $SPLICE right now; null when no wallet is linked. */
+  holder?: (chatId: string) => Promise<{ address: string; holder: boolean } | null>;
+  /** The page where a chat links a wallet (sign a message; no transaction). */
+  holderLink?: (chatId: string) => Promise<string>;
+  now?: () => number;
 }
 
 export const MAX_ALERTS_PER_CHAT = 10;
+/** Chats with a linked wallet holding enough $SPLICE. */
+export const MAX_ALERTS_PER_HOLDER_CHAT = 30;
+
+/**
+ * Features holders get first: open to linked holder chats now, to everyone from the date given.
+ * A feature is removed from this list once it is open to all.
+ */
+export const EARLY_ACCESS: Record<string, string> = { premium: "2026-10-07T12:00:00Z" };
+export const holdersOnly = (feature: string, now: number): boolean => Boolean(EARLY_ACCESS[feature]) && now < Date.parse(EARLY_ACCESS[feature]!);
 
 const COMMANDS = [
   "$SPLICE",
@@ -64,8 +78,13 @@ const COMMANDS = [
   "/whales on 100 — $SPLICE trades of $100 or more",
   "/burns on — every new $SPLICE burn",
   "/radar on 10000 — new tokens with $10,000+ liquidity",
+  "/premium on 2 — stock tokens trading 2%+ away from their reference price",
   "/alerts — your alerts · /alertoff 2 — remove one (or: all)",
   "",
+  "Holders",
+  "/holder — link a wallet holding 100,000+ $SPLICE: 30 alerts, 50 questions a day, new features first",
+  "",
+  "/invite — add me to a group",
   "/links — website, docs, GitHub",
 ];
 export { COMMANDS as BOT_COMMANDS };
@@ -103,13 +122,16 @@ const ALERT_TEXT: Record<AlertKind, (v: number | null) => string> = {
   whale: (v) => `$SPLICE trades of ${usd(v)} or more`,
   burn: () => "every new $SPLICE burn",
   radar: (v) => `new tokens with ${usd(v)}+ liquidity`,
+  premium: (v) => `stock tokens ${Number(v).toFixed(1)}%+ away from their reference price`,
 };
 export const describeAlert = (a: Pick<AlertRow, "kind" | "value">) => ALERT_TEXT[a.kind](a.value);
 
-async function alertCommand(command: string, arg: string, chatId: string, store: AlertStore | undefined): Promise<string> {
+async function alertCommand(command: string, arg: string, chatId: string, store: AlertStore | undefined, isHolder: boolean, now: number): Promise<string> {
   if (!store) return "Alerts are not available right now.";
   const parts = arg.split(/\s+/).filter(Boolean);
-  const full = async () => (await store.list(chatId)).length >= MAX_ALERTS_PER_CHAT;
+  const cap = isHolder ? MAX_ALERTS_PER_HOLDER_CHAT : MAX_ALERTS_PER_CHAT;
+  const full = async () => (await store.list(chatId)).length >= cap;
+  const fullText = isHolder ? `This chat already has ${cap} alerts. Remove one with /alertoff first.` : `This chat already has ${cap} alerts. Remove one with /alertoff first, or link a holder wallet for ${MAX_ALERTS_PER_HOLDER_CHAT}: /holder`;
   if (command === "alerts") {
     const list = await store.list(chatId);
     return list.length ? ["Alerts in this chat:", ...list.map((a) => `${a.id}. ${describeAlert(a)}`), "", "Remove one with /alertoff <number>, or /alertoff all."].join("\n") : "No alerts in this chat yet. Try /alert above 0.00002, /whales on, /burns on or /radar on.";
@@ -125,25 +147,38 @@ async function alertCommand(command: string, arg: string, chatId: string, store:
     const kind = (parts[0] ?? "").toLowerCase();
     const value = Number(parts[1]);
     if ((kind !== "above" && kind !== "below") || !Number.isFinite(value) || value <= 0) return "Usage: /alert above 0.00002   or   /alert below 0.00001   ($SPLICE price in USD)";
-    if (await full()) return `This chat already has ${MAX_ALERTS_PER_CHAT} alerts. Remove one with /alertoff first.`;
+    if (await full()) return fullText;
     await store.add(chatId, kind, value);
     return `Alert set: ${describeAlert({ kind, value })}. I'll message this chat once when it happens.`;
   }
-  // /whales, /burns, /radar: on [value] | off
-  const kind: AlertKind = command === "whales" ? "whale" : command === "burns" ? "burn" : "radar";
+  // /whales, /burns, /radar, /premium: on [value] | off
+  const kind: "whale" | "burn" | "radar" | "premium" = command === "whales" ? "whale" : command === "burns" ? "burn" : command === "premium" ? "premium" : "radar";
   const mode = (parts[0] ?? "").toLowerCase();
-  const label = { whale: "large-trade alerts", burn: "burn alerts", radar: "new-token alerts" }[kind];
+  const label = { whale: "large-trade alerts", burn: "burn alerts", radar: "new-token alerts", premium: "stock token premium alerts" }[kind];
   if (mode === "off") return (await store.remove(chatId, kind)) ? `Turned off ${label}.` : `There were no ${label} in this chat.`;
-  if (mode !== "on") return kind === "whale" ? "Usage: /whales on 100   (minimum trade size in USD), or /whales off" : kind === "burn" ? "Usage: /burns on, or /burns off" : "Usage: /radar on 10000   (minimum liquidity in USD), or /radar off";
-  const defaults = { whale: 100, burn: null, radar: 10_000 } as const;
-  const minimums = { whale: 10, burn: 0, radar: 1_000 } as const;
+  if (mode !== "on") {
+    return kind === "whale"
+      ? "Usage: /whales on 100   (minimum trade size in USD), or /whales off"
+      : kind === "burn"
+        ? "Usage: /burns on, or /burns off"
+        : kind === "premium"
+          ? "Usage: /premium on 2   (minimum gap in percent between the DEX price and the reference price), or /premium off"
+          : "Usage: /radar on 10000   (minimum liquidity in USD), or /radar off";
+  }
+  // Holders get new alert types first (see EARLY_ACCESS).
+  if (holdersOnly(kind, now) && !isHolder) {
+    return `Stock token premium alerts are open to $SPLICE holders first, and to everyone from ${EARLY_ACCESS[kind]!.slice(0, 10)}. Link a wallet holding 100,000+ $SPLICE with /holder.`;
+  }
+  const defaults = { whale: 100, burn: null, radar: 10_000, premium: 2 } as const;
+  const minimums = { whale: 10, burn: 0, radar: 1_000, premium: 0.5 } as const;
   let value: number | null = defaults[kind];
   if (kind !== "burn" && parts[1] !== undefined) {
     value = Number(parts[1]);
-    if (!Number.isFinite(value) || value < minimums[kind]) return `The minimum is ${usd(minimums[kind])}.`;
+    if (!Number.isFinite(value) || value < minimums[kind]) return kind === "premium" ? `The minimum is ${minimums.premium}%.` : `The minimum is ${usd(minimums[kind])}.`;
+    if (kind === "premium" && value > 50) return "The maximum is 50%.";
   }
   const existing = (await store.list(chatId)).some((a) => a.kind === kind);
-  if (!existing && (await full())) return `This chat already has ${MAX_ALERTS_PER_CHAT} alerts. Remove one with /alertoff first.`;
+  if (!existing && (await full())) return fullText;
   await store.add(chatId, kind, value);
   return `On: ${describeAlert({ kind, value })}. Turn it off with /${command} off.`;
 }
@@ -296,7 +331,26 @@ export async function telegramReply(text: string, chatId: string, deps: Telegram
     case "whales":
     case "burns":
     case "radar":
-      return `${name}: ${await alertCommand(command, arg, chatId, deps.alerts)}`;
+    case "premium": {
+      const linked = deps.holder ? await deps.holder(chatId).catch(() => null) : null;
+      return `${name}: ${await alertCommand(command, arg, chatId, deps.alerts, Boolean(linked?.holder), (deps.now ?? Date.now)())}`;
+    }
+    case "holder": {
+      if (!deps.holder || !deps.holderLink) return `${name}, holder access is not available right now.`;
+      const linked = await deps.holder(chatId);
+      const perks = `Holder chats get ${MAX_ALERTS_PER_HOLDER_CHAT} alerts instead of ${MAX_ALERTS_PER_CHAT}, 50 questions a day instead of 10, and new features first.`;
+      if (linked?.holder) return [`${name}, this chat is linked to ${short(linked.address)}, which holds enough $SPLICE.`, perks, Object.keys(EARLY_ACCESS).length ? `Open to holders now: ${Object.keys(EARLY_ACCESS).map((f) => `/${f}`).join(", ")}` : ""].filter(Boolean).join("\n");
+      const link = await deps.holderLink(chatId);
+      return [
+        linked ? `${name}, this chat is linked to ${short(linked.address)}, but that wallet no longer holds 100,000 $SPLICE.` : `${name}, link a wallet that holds 100,000+ $SPLICE to this chat.`,
+        perks,
+        "",
+        "Open this page and sign a message with the wallet. It is a signature only: no transaction, no gas, no approval.",
+        link,
+      ].join("\n");
+    }
+    case "invite":
+      return [`${name}, add me to a group and everyone there can use the commands:`, "t.me/spliceloombot?startgroup=true", "", "In groups I only answer commands, and alerts set in a group are sent to that group."].join("\n");
     case "links":
       return [`${name}, the official Splice links:`, "Website: spliceloom.com", "Docs: docs.spliceloom.com", "GitHub: github.com/spliceloom/spliceloom", "X: x.com/spliceloom", "Token: spliceloom.com/token"].join("\n");
     default:

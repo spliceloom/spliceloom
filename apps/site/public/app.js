@@ -1326,6 +1326,22 @@
       } else button.textContent = "Connect wallet";
     };
     show();
+    // Opened from the Telegram bot (/holder): tie the verified wallet to that chat.
+    const tg = new URLSearchParams(location.search).get("tg");
+    const linkTelegram = async (pass) => {
+      if (!tg || !pass) return;
+      try {
+        await getJson("/v1/holder/link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pass, tg }) });
+        status.textContent = "Linked to your Telegram chat. Go back to the bot and send /holder.";
+        status.classList.add("up");
+      } catch (error) {
+        status.textContent = (error && error.message) || "Could not link the Telegram chat. Send /holder to the bot for a new link.";
+      }
+    };
+    if (tg) {
+      if (read()) linkTelegram(read().pass);
+      else status.textContent = "Connect the wallet that holds 100,000+ $SPLICE to link it to your Telegram chat. Signing a message only: no transaction, no gas.";
+    }
     button.addEventListener("click", async () => {
       if (read()) {
         try {
@@ -1357,6 +1373,7 @@
           window.spliceHolder = { pass: () => r.pass };
           show();
           if (!read()) status.textContent = `Holder access active for ${short(r.address)} on this page.`;
+          await linkTelegram(r.pass);
         } else status.textContent = r.message || "This wallet does not hold enough $SPLICE.";
       } catch (error) {
         status.textContent = error && error.code === 4001 ? "Signature cancelled." : (error && error.message) || "Could not verify the wallet. Try again.";
@@ -1506,8 +1523,75 @@
       card.append(head, el("p", p.description, "skill-desc"), facts, code, details);
       return card;
     }));
+    const featured = list.getAttribute("data-featured");
     const shown = cards.filter(Boolean);
+    const star = shown.find((c) => c.querySelector("h3").textContent === featured);
+    if (star) {
+      star.classList.add("agent-featured");
+      star.prepend(el("span", "Featured this week", "agent-badge mono"));
+      shown.splice(shown.indexOf(star), 1);
+      shown.unshift(star);
+    }
     list.replaceChildren(...(shown.length ? shown : [el("p", "No agent packages yet.", "muted")]));
+  };
+
+  // ------------------------------------------------------------------ /proof
+  const proof = async () => {
+    const EXPLORER = "https://robin.etherscan.io";
+    const ext = (text, path) => Object.assign(el("a", text, "text-link"), { href: `${EXPLORER}${path}`, target: "_blank", rel: "noopener noreferrer" });
+    const tokens = (v) => (Number.isFinite(num(v)) ? `${num(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} SPLICE` : "unavailable");
+    const item = (label, value) => {
+      const li = el("li");
+      li.append(el("span", label), typeof value === "string" ? el("strong", value) : value);
+      return li;
+    };
+    const burnsCard = root.querySelector('[data-table="burns"]');
+    getJson("/v1/token").then((d) => {
+      const tp = d.transparency || {};
+      if (tp.deployer) {
+        root.querySelector("[data-proof-dev]").textContent = tokens(tp.deployer.balance);
+        const note = root.querySelector("[data-proof-dev-note]");
+        note.replaceChildren("Held by ", ext(short(tp.deployer.address), `/address/${tp.deployer.address}`), ", the wallet that deployed the token.");
+        root.querySelector("[data-proof-dev-source]").textContent = src(tp.deployer);
+      }
+      const b = d.burned || {};
+      root.querySelector("[data-proof-burned]").textContent = b.total !== null && b.total !== undefined ? `${tokens(b.total)} · ${num(b.pctOfSupply).toFixed(2)}%` : "unavailable";
+      const dead = (b.addresses || [])[0];
+      if (dead) {
+        root.querySelector("[data-proof-burned-note]").replaceChildren("Balance of the dead address ", ext(short(dead.address), `/token/${d.address}?a=${dead.address}`), ", out of circulation for good.");
+        root.querySelector("[data-proof-burned-source]").textContent = src(dead);
+      }
+      const pctOf = (v) => (Number.isFinite(num(v)) ? `${num(v).toFixed(2)}%` : "—");
+      root.querySelector("[data-proof-supply]").replaceChildren(
+        item("Total supply", tokens(d.totalSupply)),
+        item("In the launch pool", pctOf(tp.curve && tp.curve.pctOfSupply)),
+        item("Held by holders", pctOf(tp.holdersPct)),
+        item("Burned", pctOf(tp.burnedPct)),
+        item("Holders", String(d.holders || "—")),
+      );
+      root.querySelector("[data-proof-contract]").replaceChildren(
+        item("Address", ext(short(d.address), `/address/${d.address}`)),
+        item("Verified source", tp.contract && tp.contract.verified ? String(tp.contract.verified) : "not verified"),
+        item("Chain", "Robinhood Chain"),
+      );
+    }).catch(() => {
+      root.querySelector("[data-proof-dev]").textContent = "unavailable";
+      root.querySelector("[data-proof-burned]").textContent = "unavailable";
+    });
+    let h;
+    try {
+      h = await getJson("/v1/burns");
+    } catch {
+      return message(burnsCard, "The burn list is unavailable right now. The burned total above is read separately.");
+    }
+    if (!h.burns.length) return message(burnsCard, "No burns from the dev wallet yet.");
+    const tx = (hash) => (/^0x[0-9a-f]{64}$/i.test(hash || "") ? ext(`${hash.slice(0, 10)}…${hash.slice(-6)}`, `/tx/${hash}`) : null);
+    burnsCard.querySelector("tbody").replaceChildren(...h.burns.map((b) => {
+      const burnTx = tx(b.txHash);
+      const buyTx = tx(b.acquiredInTx);
+      return row([{ text: b.time ? b.time.slice(0, 16).replace("T", " ") : "—" }, { text: tokens(b.amount), cls: "strong" }, burnTx ? { node: burnTx } : { text: "—" }, buyTx ? { node: buyTx } : { text: "—" }]);
+    }));
+    burnsCard.querySelector("[data-source]").textContent = `${h.burns.length} burns · ${src(h.source)} · updated ${ago(h.updatedAt)}`;
   };
 
   // One agent package: /agent?id=@namespace/name
@@ -1860,6 +1944,7 @@
   const start = () => {
     if (kind === "stocks") stocks();
     else if (kind === "chain") odds();
+    else if (kind === "proof") proof();
     else if (kind === "agent-page") agentPage();
     else if (kind === "agents") {
       agents();

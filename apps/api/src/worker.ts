@@ -7,7 +7,7 @@
  * and globally per day.
  */
 import { PROVIDER_ENV, SpliceData } from "@spliceloom/data";
-import { apiSources, createApiHandler, type Counters, type JsonCache } from "./handler.js";
+import { apiSources, createApiHandler, type Counters, type HolderLinks, type JsonCache } from "./handler.js";
 import { runTelegramAlerts, type AlertState } from "./telegram-alerts.js";
 import type { AlertKind, AlertRow, AlertStore } from "./telegram.js";
 
@@ -78,7 +78,7 @@ function d1Alerts(db: D1Like): AlertStore {
   return {
     async add(chatId, kind, value) {
       await init();
-      if (kind === "whale" || kind === "burn" || kind === "radar") await db.prepare("DELETE FROM tg_alerts WHERE chat = ?1 AND kind = ?2").bind(chatId, kind).run();
+      if (kind === "whale" || kind === "burn" || kind === "radar" || kind === "premium") await db.prepare("DELETE FROM tg_alerts WHERE chat = ?1 AND kind = ?2").bind(chatId, kind).run();
       await db.prepare("INSERT INTO tg_alerts (chat, kind, value, created) VALUES (?1, ?2, ?3, ?4)").bind(chatId, kind, value, Date.now()).run();
     },
     async list(chatId) {
@@ -106,6 +106,49 @@ function d1Alerts(db: D1Like): AlertStore {
   };
 }
 
+/** Wallets linked to Telegram chats for holder perks: one wallet per chat. */
+function d1HolderLinks(db: D1Like): HolderLinks {
+  let ready: Promise<unknown> | undefined;
+  const init = () => (ready ??= db.prepare("CREATE TABLE IF NOT EXISTS tg_holders (chat TEXT PRIMARY KEY, address TEXT NOT NULL, linked_at INTEGER NOT NULL)").run());
+  return {
+    async get(chatId) {
+      await init();
+      return (await db.prepare("SELECT address FROM tg_holders WHERE chat = ?1").bind(chatId).first<{ address: string }>())?.address ?? null;
+    },
+    async set(chatId, address) {
+      await init();
+      await db.prepare("INSERT INTO tg_holders (chat, address, linked_at) VALUES (?1, ?2, ?3) ON CONFLICT(chat) DO UPDATE SET address = excluded.address, linked_at = excluded.linked_at").bind(chatId, address, Date.now()).run();
+    },
+  };
+}
+
+/**
+ * Daily usage counts. `usage_daily` holds one number per day and event; `usage_seen` holds a hash
+ * per day so different chats can be counted once. No message text, no chat ids, no addresses.
+ */
+function d1Usage(db: D1Like, wait: (p: Promise<unknown>) => void): (event: string, distinctId?: string) => void {
+  let ready: Promise<unknown> | undefined;
+  const init = () =>
+    (ready ??= Promise.all([
+      db.prepare("CREATE TABLE IF NOT EXISTS usage_daily (day TEXT NOT NULL, k TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, k))").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS usage_seen (day TEXT NOT NULL, k TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (day, k, h))").run(),
+    ]));
+  const bump = (day: string, k: string) => db.prepare("INSERT INTO usage_daily (day, k, n) VALUES (?1, ?2, 1) ON CONFLICT(day, k) DO UPDATE SET n = n + 1").bind(day, k).run();
+  return (event, distinctId) => {
+    const day = new Date().toISOString().slice(0, 10);
+    wait(
+      (async () => {
+        await init();
+        if (distinctId === undefined) return bump(day, event);
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${day}:${event}:${distinctId}`));
+        const h = [...new Uint8Array(digest)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const r = await db.prepare("INSERT OR IGNORE INTO usage_seen (day, k, h) VALUES (?1, ?2, ?3)").bind(day, event, h).run();
+        if (r.meta?.changes) await bump(day, event);
+      })().catch(() => undefined),
+    );
+  };
+}
+
 const positive = (v: unknown) => {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : undefined;
@@ -125,6 +168,8 @@ export default {
       options.counters = d1Counters(env.DB);
       options.cache = d1Cache(env.DB);
       options.alerts = d1Alerts(env.DB);
+      options.holderLinks = d1HolderLinks(env.DB);
+      options.usage = d1Usage(env.DB, (p) => ctx.waitUntil(p));
       // Expired counters are dropped occasionally (no cron needed).
       if (Math.random() < 0.01) ctx.waitUntil(env.DB.prepare("DELETE FROM counters WHERE expires < ?1").bind(Date.now()).run().catch(() => undefined));
     }
@@ -143,7 +188,7 @@ export default {
     const client = request.headers.get("cf-connecting-ip") ?? "unknown";
 
     // Edge cache for public GETs (keyed by URL only; the Origin header only changes CORS).
-    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener", "/v1/odds", "/v1/agents"].includes(new URL(request.url).pathname);
+    const cacheable = request.method === "GET" && ["/v1/chain", "/v1/token", "/v1/token/live", "/v1/stocks", "/v1/screener", "/v1/odds", "/v1/agents", "/v1/burns"].includes(new URL(request.url).pathname);
     if (!cacheable) return handle(request, client);
     const cache = (globalThis as { caches?: { default?: CacheLike } }).caches?.default;
     if (!cache) return handle(request, client);
@@ -177,6 +222,6 @@ export default {
       const r = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), disable_web_page_preview: true }) });
       return r.ok;
     };
-    await runTelegramAlerts({ store: d1Alerts(env.DB), state, live: sources.live, token: sources.token, screener: sources.screener, send });
+    await runTelegramAlerts({ store: d1Alerts(env.DB), state, live: sources.live, token: sources.token, screener: sources.screener, stocks: sources.stocks, send });
   },
 };

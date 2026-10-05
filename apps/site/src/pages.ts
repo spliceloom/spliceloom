@@ -181,7 +181,7 @@ function footer(loc: PageLoc, config: SiteConfig): string {
       <nav class="footer-cols" aria-label="Footer">
         <div><h2>Platform</h2><a href="${d("architecture")}">How it works</a><a href="${d("skills")}">Skills</a><a href="${d("capabilities")}">Capabilities</a><a href="${d("security")}">Security</a><a href="${d("public-registry")}">Registry</a></div>
         <div><h2>Developers</h2><a href="${d("quickstart")}">Quickstart</a><a href="${d("cli")}">CLI</a><a href="${d("sdk")}">TypeScript SDK</a><a href="${d("mcp")}">MCP</a><a href="${d("authoring-skills")}">Skill authoring</a></div>
-        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "widgets")}">Widgets</a><a href="${href(config, loc, "bot")}">Telegram bot</a><a href="${href(config, loc, "agents")}">Agent directory</a></div>
+        <div><h2>Tools</h2><a href="${href(config, loc, "live")}">Live chain data</a><a href="${href(config, loc, "stocks")}">Stock token premiums</a><a href="${href(config, loc, "screener")}">New token screener</a><a href="${href(config, loc, "wallet")}">Wallet viewer</a><a href="${href(config, loc, "explain")}">Contract explainer</a><a href="${href(config, loc, "ask")}">Ask</a><a href="${href(config, loc, "token")}">$SPLICE token</a><a href="${href(config, loc, "proof")}">$SPLICE proof</a><a href="${href(config, loc, "widgets")}">Widgets</a><a href="${href(config, loc, "bot")}">Telegram bot</a><a href="${href(config, loc, "agents")}">Agent directory</a></div>
         <div><h2>Data</h2><a href="${d("robinhood-chain")}">Robinhood Chain</a><a href="${d("data-providers")}">Providers</a><a href="${d("capabilities")}">Host capabilities</a><a href="${d("api")}">Registry API</a></div>
         <div><h2>Project</h2><a href="${href(config, loc, "blog")}">Blog</a><a href="${href(config, loc, "registry")}">Registry</a><a href="${href(config, loc, "docs/changelog")}">Changelog</a><a href="${href(config, loc, "brand")}">Brand</a><a href="${e(config.githubUrl)}" rel="noopener">GitHub</a><a href="https://x.com/spliceloom" rel="noopener">X (@spliceloom)</a><a href="${d("security")}">Security model</a><a href="${d("faq")}">FAQ</a><a href="${d("introduction")}">Documentation</a></div>
       </nav>
@@ -1059,7 +1059,7 @@ export function renderToken(config: SiteConfig): string {
               <div class="burn-head"><div><span class="mono">Burned</span><strong data-burn-total>—</strong></div><div class="burn-pct"><strong data-burn-pct>—</strong><span class="mono">of total supply</span></div></div>
               <svg class="burn-bar" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="1000" height="14" rx="7"/><rect class="fill" data-burn-fill width="0" height="14" rx="7"/></svg>
               <ul class="burn-addresses" data-burn-addresses></ul>
-              <p class="fine">Burned = the $SPLICE balance of the dead address and the zero address, read with <code>balanceOf</code> at the latest block.</p>
+              <p class="fine">Burned = the $SPLICE balance of the dead address and the zero address, read with <code>balanceOf</code> at the latest block. <a class="text-link" href="${href(config, loc, "proof")}">Every burn with its transaction ${ARROW}</a></p>
             </div>
           </div>
         </div>
@@ -1283,6 +1283,9 @@ export function renderEmbed(config: SiteConfig): string {
 }
 
 /** How to embed the $SPLICE card. */
+/** The agent shown first on the agents host with a "Featured this week" badge. Change it weekly; empty for none. */
+export const FEATURED_AGENT = "@splice/tx-explainer";
+
 /**
  * The agents host: official skills from the registry (rendered at build time) and the open-source
  * directory (filled in the browser from the public API).
@@ -1304,7 +1307,7 @@ export function renderAgents(config: SiteConfig, snapshot: RegistrySnapshot, ski
 
       <h2 class="subhead mono">Agents on Splice</h2>
       <p class="section-lead">An agent package is instructions plus the skills whose tools it may call. It has no permissions of its own: every call runs in the sandbox of the skill that owns the tool.</p>
-      <div class="agent-grid" data-agents-list><p class="muted">Loading…</p></div>
+      <div class="agent-grid" data-agents-list data-featured="${e(FEATURED_AGENT)}"><p class="muted">Loading…</p></div>
 
       <h2 class="subhead mono">Open-source directory</h2>
       <div class="screener-filters">
@@ -1350,6 +1353,30 @@ splice publish ./my-skill</code></pre></article>
 splice publish --sign</code></pre></article>
       </div>
       <p class="more"><a class="text-link" href="${link("docs/publishing")}">Publishing guide ${ARROW}</a><a class="text-link" href="${link("docs/signing")}">Package signing ${ARROW}</a><a class="text-link" href="${link("docs/agents")}">Agent packages ${ARROW}</a><a class="text-link" href="${link("docs/auth")}">Tokens and namespaces ${ARROW}</a></p>
+    </div>
+  </section>`);
+}
+
+/** $SPLICE proof page: the dev wallet, every burn and where the supply sits, read from the chain on load. */
+export function renderProof(config: SiteConfig): string {
+  const loc: PageLoc = { host: "site", dir: "" };
+  return sitePage(config, loc, { title: "$SPLICE proof — Splice", description: "Check $SPLICE yourself: the dev wallet's balance, every burn with its transaction, and where the supply sits, read from Robinhood Chain when you open the page.", path: "proof", bodyClass: "live-page" }, `
+  <section class="section" data-live="proof" data-api="${e(config.api ?? "")}">
+    <div class="shell">
+      <div class="section-head split-head">
+        <div><p class="kicker">Proof</p><h1 class="display">Check it yourself.</h1></div>
+        <p class="section-lead">Everything on this page is read from Robinhood Chain when you open it. Each number links to the transaction or address it comes from.</p>
+      </div>
+      <div class="proof-grid">
+        <div class="live-card proof-card"><h2>Dev wallet</h2><strong class="proof-big" data-proof-dev>—</strong><p class="proof-note" data-proof-dev-note>The wallet that deployed the token, read from the contract's <code>deployer()</code>.</p><p class="card-source mono" data-proof-dev-source></p></div>
+        <div class="live-card proof-card"><h2>Burned</h2><strong class="proof-big" data-proof-burned>—</strong><p class="proof-note" data-proof-burned-note>Balance of the dead address, read with <code>balanceOf</code>.</p><p class="card-source mono" data-proof-burned-source></p></div>
+        <div class="live-card proof-card"><h2>Supply</h2><ul class="proof-list" data-proof-supply><li class="muted">Loading…</li></ul></div>
+        <div class="live-card proof-card"><h2>Contract</h2><ul class="proof-list" data-proof-contract><li class="muted">Loading…</li></ul></div>
+      </div>
+      <div class="live-card" data-table="burns"><h2>Every burn from the dev wallet</h2><table><thead><tr><th>Date (UTC)</th><th>Amount burned</th><th>Burn transaction</th><th>Bought in</th></tr></thead><tbody><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table><p class="card-source mono" data-source></p></div>
+      <p class="fine">"Bought in" is the transaction that brought the same amount into the dev wallet right before it was burned. Burns are transfers of $SPLICE from the dev wallet to the dead address, listed by Blockscout.</p>
+      <div class="live-card proof-card"><h2>What we do not claim</h2><ul class="proof-list"><li>Liquidity is not locked by us. The pool is the launch curve, and its contract source is not verified, so we make no claim about it.</li><li>No price target and no promised return. This page shows facts about the token, not a forecast.</li><li>The top holder list includes the pool itself. See the labelled list on the token page.</li></ul></div>
+      <p class="more"><a class="text-link" href="${href(config, loc, "token")}">$SPLICE chart, trades and holders ${ARROW}</a><a class="text-link" href="${href(config, loc, "bot")}">Burn alerts in Telegram ${ARROW}</a></p>
     </div>
   </section>`);
 }
@@ -1400,9 +1427,10 @@ export function renderBot(config: SiteConfig): string {
         ${group("Robinhood Chain", [["/tvl", "Total value locked and its change"], ["/perps", "Perpetual markets by volume"], ["/new", "Newest tokens with security flags"], ["/odds", "Prediction-market odds: Fed, inflation, stock events"]])}
         ${group("Stock tokens", [["/stocks", "Every stock token: premium or discount against the reference price"], ["/stock NVDA", "One stock token: token and underlying quote"], ["/filings NVDA", "The company's latest SEC filings"]])}
         ${group("Any address", [["/check 0x…", "Verified-source status and security flags of a token contract"], ["/wallet 0x…", "What a wallet holds"], ["/ask <question>", "A question in plain English, answered with sources"]])}
-        ${group("Alerts, sent to your chat", [["/alert above 0.00002", "$SPLICE price crosses a level (also: below)"], ["/whales on 100", "$SPLICE trades of $100 or more"], ["/burns on", "Every new $SPLICE burn"], ["/radar on 10000", "New tokens with $10,000+ liquidity"], ["/alerts", "Your alerts; remove one with /alertoff"]])}
+        ${group("Alerts, sent to your chat", [["/alert above 0.00002", "$SPLICE price crosses a level (also: below)"], ["/whales on 100", "$SPLICE trades of $100 or more"], ["/burns on", "Every new $SPLICE burn"], ["/radar on 10000", "New tokens with $10,000+ liquidity"], ["/premium on 2", "Stock tokens trading 2%+ away from their reference price (holders first)"], ["/alerts", "Your alerts; remove one with /alertoff"]])}
+        ${group("For $SPLICE holders", [["/holder", "Link a wallet holding 100,000+ $SPLICE to the chat by signing a message: no transaction, no gas"], ["30 alerts", "Instead of 10 per chat"], ["50 questions a day", "Instead of 10 with /ask"], ["New features first", "New alert types open to holder chats before everyone else"]])}
       </div>
-      <p class="fine">Alerts are checked every 2 minutes; up to 10 per chat. /ask is limited to 10 questions per chat per day. Security flags are automated checks, not an audit. New tokens are listed automatically and are not reviewed or endorsed by Splice. Market data, not financial advice.</p>
+      <p class="fine">Alerts are checked every 2 minutes; up to 10 per chat, 30 for holder chats. /ask is limited to 10 questions per chat per day, 50 for holder chats. The wallet's balance is read from the chain again each time, so the perks last as long as it holds 100,000 $SPLICE. Add the bot to a group with /invite. Security flags are automated checks, not an audit. New tokens are listed automatically and are not reviewed or endorsed by Splice. Market data, not financial advice.</p>
       <p class="more"><a class="text-link" href="${href(config, loc, "docs/web-tools")}">How the bot and the web tools work ${ARROW}</a><a class="text-link" href="${href(config, loc, "live")}">Robinhood Chain live ${ARROW}</a></p>
     </div>
   </section>`);

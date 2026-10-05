@@ -12,7 +12,7 @@ import { agentSystemPrompt, runAgentTurn } from "@spliceloom/mcp/agent";
 import { contractFacts, explainContract, screener, stockPremiums, walletSummary } from "./features.js";
 import { handleDiscordInteraction, verifyDiscordSignature } from "./discord.js";
 import { TICKER, agentDirectory, predictionOdds, secFilings, secTickers, type ExternalFetch } from "./extras.js";
-import { HOLDER_MIN_TOKENS, holderMessage, issuePass, readPass, verifyHolderSignature } from "./holder.js";
+import { HOLDER_MIN_TOKENS, holderMessage, issuePass, readPass, readTelegramLinkCode, telegramLinkCode, verifyHolderSignature } from "./holder.js";
 import { handleTelegramUpdate, type AlertStore, type TelegramDeps } from "./telegram.js";
 
 /** The official $SPLICE contract on Robinhood Chain (announced on spliceloom.com and @spliceloom). */
@@ -27,6 +27,11 @@ const ASK_EXCLUDED = ["web_search", "web_extract", "web_map", "web_similar", "we
 export interface Counters {
   /** Increments `key` (expiring at `expiresAt`, ms) and returns the new value. */
   increment(key: string, expiresAt: number): Promise<number>;
+}
+
+export interface HolderLinks {
+  get(chatId: string): Promise<string | null>;
+  set(chatId: string, address: string): Promise<void>;
 }
 
 export interface ApiOptions {
@@ -46,6 +51,10 @@ export interface ApiOptions {
   holderDailyLimit?: number;
   /** Secret token Telegram sends with every webhook call. The bot is off without it. */
   telegramSecret?: string;
+  /** Wallets linked to Telegram chats (D1 in the Worker). Holder perks in the bot are off without it. */
+  holderLinks?: HolderLinks;
+  /** Counts usage events per day (bot commands, questions). Never stores message text or wallet addresses. */
+  usage?: (event: string, distinctId?: string) => void;
   /** Telegram alert subscriptions (D1 in the Worker). Alert commands are off without it. */
   alerts?: AlertStore;
   /** Fetch for the keyless public sources (SEC EDGAR, Polymarket) and Discord replies. Those features are off without it. */
@@ -389,6 +398,29 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
+const DEAD_ADDRESS = "0x000000000000000000000000000000000000dead";
+
+/**
+ * Every $SPLICE transfer from the deployer wallet into the dead address, newest first, with the
+ * transaction that brought those tokens into the wallet when it is the transfer just before it.
+ */
+export async function burnHistory(data: SpliceData): Promise<Record<string, unknown>> {
+  const call = await data.onchain.call(TOKEN_CA, "0xd5f39488");
+  const word = live<{ result: string }>(call)?.result;
+  const deployer = word && word.length >= 42 ? `0x${word.slice(-40)}`.toLowerCase() : null;
+  if (!deployer) return { deployer: null, burns: [], source: section(call) };
+  const r = await data.onchain.transfers(deployer, { limit: 100 });
+  const transfers = (live<{ transfers: Array<{ hash?: string; timestamp?: string; from?: string; to?: string; formatted?: string; token?: { address?: string } }> }>(r)?.transfers ?? []).filter((t) => t.token?.address?.toLowerCase() === TOKEN_CA.toLowerCase());
+  const burns = transfers.flatMap((t, i) => {
+    if (t.to?.toLowerCase() !== DEAD_ADDRESS || t.from?.toLowerCase() !== deployer || !t.hash) return [];
+    // The list is newest first: the entry after a burn is what happened just before it.
+    const before = transfers[i + 1];
+    const acquired = before && before.to?.toLowerCase() === deployer && before.formatted === t.formatted && before.hash ? before.hash : null;
+    return [{ time: t.timestamp ?? null, amount: t.formatted ?? null, txHash: t.hash, acquiredInTx: acquired }];
+  });
+  return { deployer, burns, source: section(r) };
+}
+
 /** The cached data sources shared by the HTTP routes, the Telegram bot and the scheduled alerts. */
 export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "background" | "fetch" | "githubToken">) {
   const cacheCtx = (): CacheContext => ({ ...(options.cache ? { cache: options.cache } : {}), ...(options.background ? { background: options.background } : {}) });
@@ -417,6 +449,8 @@ export function apiSources(options: Pick<ApiOptions, "data" | "cache" | "backgro
           (v) => (v.source as { status: string }).status === "LIVE",
         ),
       ),
+    /** $SPLICE burns sent from the deployer wallet (Blockscout token transfers into the dead address). */
+    burns: async () => stamp(await cachedJson(cacheCtx(), "burns:v1", 10 * 60_000, () => burnHistory(options.data()), (v) => (v.source as { status: string }).status === "LIVE", 86_400_000)),
     /** Open-source agents, MCP servers and skills from GitHub; refreshed every 6 hours. */
     agents: async () => stamp(await cachedJson(cacheCtx(), "agents:v1", 6 * 3_600_000, () => agentDirectory(external(), options.githubToken), (v) => (v.source as { status: string }).status === "LIVE", 7 * 86_400_000)),
     /** Latest SEC filings of a ticker; null when SEC lists no filer for it. */
@@ -495,6 +529,14 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       }, (v) => (v.sources as { tokens: { status: string } }).tokens.status === "LIVE")
     ).value;
 
+  /** The wallet linked to a Telegram chat and whether it still holds enough $SPLICE (balance cached for 5 minutes). */
+  const chatHolder = async (chatId: string): Promise<{ address: string; holder: boolean } | null> => {
+    const address = options.holderLinks ? await options.holderLinks.get(chatId) : null;
+    if (!address) return null;
+    const balance = (await cachedJson(cacheCtx(), `holderbal:${address}`, 5 * 60_000, () => spliceBalance(address), (v) => v !== null)).value;
+    return { address, holder: balance !== null && balance >= HOLDER_MIN_TOKENS };
+  };
+
   const telegram: TelegramDeps = {
     token: tokenCached,
     chain: chainCached,
@@ -516,10 +558,17 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
       const flags = facts.flags ? facts.flags.map((f) => `${f.level === "ok" ? "OK" : f.level.toUpperCase()}: ${f.text}`).join("\n") : "Security data unavailable (GoPlus).";
       return [`${facts.name ?? "Contract"} ${address}`, `Source verified: ${facts.verified === null ? "unknown" : facts.verified ? "yes (Blockscout)" : "no"}`, flags, "Automated flags, not an audit. Not financial advice."].join("\n");
     },
+    ...(options.holderSecret && options.holderLinks
+      ? {
+          holder: chatHolder,
+          holderLink: async (chatId: string) => `https://spliceloom.com/ask?tg=${encodeURIComponent(await telegramLinkCode(options.holderSecret!, chatId))}`,
+        }
+      : {}),
     ask: async (question, chatId) => {
       if (options.counters) {
+        const perDay = (await chatHolder(chatId).catch(() => null))?.holder ? (options.holderDaily ?? 50) : 10;
         const mine = await options.counters.increment(`tg:${day()}:${await sha256(chatId)}`, tomorrow());
-        if (mine > 10) return "This chat reached today's limit (10 questions). More at spliceloom.com/ask or with the CLI.";
+        if (mine > perDay) return perDay > 10 ? `This chat reached today's holder limit (${perDay} questions). It resets at 00:00 UTC.` : "This chat reached today's limit (10 questions). Holders get 50 a day: /holder";
         const all = await options.counters.increment(`ask:${day()}`, tomorrow());
         if (all > (options.askDailyLimit ?? 200)) return "Today's free questions are used up. Try again after 00:00 UTC.";
       }
@@ -610,6 +659,21 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
         return json({ holder: true, address: checked.address, balance, minTokens: HOLDER_MIN_TOKENS, pass: pass.pass, expiresAt: new Date(pass.expiresAt).toISOString(), dailyQuestions: options.holderDaily ?? 50 }, 200, origin, noStore);
       }
 
+      if (post && url.pathname === "/v1/holder/link") {
+        // Ties a verified holder wallet to the Telegram chat that asked for the link (see /holder in the bot).
+        if (!allowedOrigin(origin)) return json({ error: "forbidden" }, 403, origin, noStore);
+        if (!options.holderSecret || !options.holderLinks) return json({ error: "unavailable", message: "Holder access is not enabled." }, 503, origin, noStore);
+        const body = (await request.json().catch(() => ({}))) as { pass?: unknown; tg?: unknown };
+        const address = await holderOf(body.pass);
+        if (!address) return json({ error: "not_holder", message: `Connect a wallet that holds ${HOLDER_MIN_TOKENS.toLocaleString("en-US")}+ $SPLICE first.` }, 403, origin, noStore);
+        const chatId = typeof body.tg === "string" ? await readTelegramLinkCode(options.holderSecret, body.tg) : null;
+        if (!chatId) return json({ error: "invalid_input", message: "This link is not valid. Send /holder to the bot to get a new one." }, 400, origin, noStore);
+        await options.holderLinks.set(chatId, address);
+        return json({ linked: true, address }, 200, origin, noStore);
+      }
+
+      if (get && url.pathname === "/v1/burns") return json(await sources.burns(), 200, origin, { "cache-control": "public, max-age=120" });
+
       if (url.pathname === "/v1/ask") {
         if (!post) return json({ error: "method_not_allowed" }, 405, origin);
         if (!allowedOrigin(origin)) return json({ error: "forbidden", message: "Ask is available on spliceloom.com." }, 403, origin, noStore);
@@ -620,6 +684,7 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
         const holder = await holderOf(body.pass);
         const blocked = await limit(client, holder);
         if (blocked) return json({ error: "rate_limited", message: blocked }, 429, origin, noStore);
+        options.usage?.(holder ? "ask:web:holder" : "ask:web");
         const t = await runAsk(question, "the Ask box on spliceloom.com, answering visitors");
         if ("failure" in t || "error" in t) return json({ error: "unavailable", message: "The model is unavailable right now. Try again shortly." }, 503, origin, noStore);
         return json({ question, answer: t.answer, calls: t.calls, model: t.model ?? null, costUsd: t.costUsd, holder: Boolean(holder) }, 200, origin, noStore);
@@ -629,6 +694,13 @@ export function createApiHandler(options: ApiOptions): (request: Request, client
         // Only Telegram knows the secret token set with setWebhook.
         if (!options.telegramSecret || request.headers.get("x-telegram-bot-api-secret-token") !== options.telegramSecret) return new Response(null, { status: 403 });
         const update = await request.json().catch(() => null);
+        // Usage counts: which command, and how many different chats per day (ids are hashed, text is not stored).
+        const text = (update as { message?: { text?: unknown; chat?: { id?: unknown } } } | null)?.message;
+        const command = typeof text?.text === "string" ? /^\/([a-z]{1,20})/i.exec(text.text)?.[1]?.toLowerCase() : undefined;
+        if (command && options.usage) {
+          options.usage(`tg:command:${command}`);
+          if (text?.chat?.id !== undefined) options.usage("tg:chats", String(text.chat.id));
+        }
         return new Response(JSON.stringify(await handleTelegramUpdate(update, telegram)), { status: 200, headers: { "content-type": "application/json" } });
       }
       if (post && url.pathname === "/discord/interactions") {

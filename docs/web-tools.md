@@ -13,6 +13,7 @@ the CLI and SDK, and every panel shows its source and how fresh it is.
 | [/explain](https://spliceloom.com/explain) | A contract's verified functions and security flags, explained in plain English |
 | [/ask](https://spliceloom.com/ask) | The `splice ask` agent in the browser |
 | [/widgets](https://spliceloom.com/widgets) | An embeddable live $SPLICE card |
+| [/proof](https://spliceloom.com/proof) | $SPLICE checked from the chain: the dev wallet's balance, every burn with its transaction, where the supply sits |
 
 ## Stock token premiums
 
@@ -97,6 +98,7 @@ commands).
 | `/whales on 100` | $SPLICE trades of $100 or more, from the pool's swap events |
 | `/burns on` | Every new $SPLICE burn |
 | `/radar on 10000` | New tokens with $10,000+ liquidity (checked every 10 minutes, at most 3 per check) |
+| `/premium on 2` | Stock tokens trading 2%+ away from their reference price (at most one message per chat every 6 hours) |
 | `/alerts`, `/alertoff 2`, `/alertoff all` | List and remove the chat's alerts (up to 10 per chat) |
 
 Alerts are checked every 2 minutes. Price alerts use the pool price read from the chain. Large
@@ -104,6 +106,22 @@ trades are read from the last ~2,000 blocks, so a trade is reported within a few
 
 Replies are plain text returned in the webhook response. The webhook only accepts calls that carry
 the secret token registered with Telegram's `setWebhook`.
+
+### Holder chats
+
+`/holder` gives the chat a link to the Ask page. Connect the wallet there and sign the message (a
+`personal_sign`: not a transaction, no gas, no approval); the chat is then linked to that wallet.
+While the wallet holds 100,000 $SPLICE, the chat gets:
+
+- 30 alerts instead of 10, and 50 `/ask` questions a day instead of 10;
+- new features first. A feature in early access is open to holder chats at once and to everyone from
+  the date the bot states. Right now: `/premium`.
+
+The balance is read from the chain again when a perk is used (cached for 5 minutes), so nothing has
+to be renewed and a wallet that sells loses the perks. The link code is bound to the chat that asked
+for it; the server stores the chat id and the wallet address, nothing else.
+
+`/invite` returns the link that adds the bot to a group.
 
 ## Discord bot
 
@@ -122,6 +140,7 @@ Read-only JSON at `https://api.spliceloom.com`, cached at the edge.
 | `GET /v1/stocks` | Stock token premiums |
 | `GET /v1/filings/:symbol` | Latest SEC filings of a ticker's registrant |
 | `GET /v1/odds` | Prediction-market odds (Polymarket) |
+| `GET /v1/burns` | $SPLICE burns sent from the dev wallet, each with its transaction |
 | `GET /v1/screener` | Newest pools with security flags |
 | `GET /v1/wallet/:address` | Wallet holdings and transfers |
 | `GET /v1/contract/:address` | Contract facts (verified name, functions, flags) |

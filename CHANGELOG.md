@@ -16,6 +16,13 @@ are versioned independently in the registry; their versions are listed per relea
 - Each agent has its own page on agents.spliceloom.com (`/agent?id=@namespace/name`).
 - Registry moderation: an admin can hide a package from search; a set of names is reserved.
 
+## Website — 2026-10-05
+
+- [/proof](https://spliceloom.com/proof): the dev wallet's balance, every burn with its transaction and where the supply
+  sits, read from the chain on load.
+- Telegram bot: `/holder` links a wallet holding 100,000+ $SPLICE to a chat (30 alerts, 50 questions a day, new
+  features first), `/premium` alerts for stock tokens trading away from their reference price, `/invite`.
+
 ## Website — 2026-10-04
 
 New tools on spliceloom.com ([docs](docs/web-tools.md)); no CLI release needed.

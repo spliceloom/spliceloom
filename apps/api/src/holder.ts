@@ -70,3 +70,21 @@ export async function readPass(secret: string, pass: string, now: number): Promi
   for (let i = 0; i < expected.length; i++) diff |= expected[i]! ^ (given[i] ?? 0);
   return diff === 0 ? m[1]! : null;
 }
+
+/**
+ * A code that ties a wallet verification to one Telegram chat: `<chat id>.<hmac>`. The bot hands it
+ * out; only a chat id the bot produced a code for can be linked, so nobody can link someone else's
+ * chat by guessing ids.
+ */
+export async function telegramLinkCode(secret: string, chatId: string): Promise<string> {
+  return `${chatId}.${(await hmac(secret, `tg-link:${chatId}`)).slice(0, 32)}`;
+}
+
+export async function readTelegramLinkCode(secret: string, code: string): Promise<string | null> {
+  const m = /^(-?\d{1,20})\.([0-9a-f]{32})$/.exec(code);
+  if (!m) return null;
+  const expected = (await hmac(secret, `tg-link:${m[1]}`)).slice(0, 32);
+  let diff = 0;
+  for (let i = 0; i < 32; i++) diff |= expected.charCodeAt(i) ^ m[2]!.charCodeAt(i);
+  return diff === 0 ? m[1]! : null;
+}

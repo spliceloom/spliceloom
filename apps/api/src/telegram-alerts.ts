@@ -6,6 +6,7 @@
  *   whale          a $SPLICE trade at or above the chat's minimum (swap events since the last run)
  *   burn           the burned balance grew
  *   radar          a new pool with at least the chat's minimum liquidity (checked every 10 minutes)
+ *   premium        stock tokens trading at least the chat's percentage away from their reference price
  */
 import { describeAlert, tgAmount, tgShort, tgUsd, type AlertRow, type AlertStore } from "./telegram.js";
 
@@ -23,11 +24,14 @@ export interface AlertDeps {
   token: () => Promise<Record<string, any>>;
   /** Newest pools with flags (see screener). */
   screener: () => Promise<Record<string, any>>;
+  /** Stock token premiums (see stockPremiums). Premium alerts are skipped without it. */
+  stocks?: () => Promise<Record<string, any>>;
   send: (chatId: string, text: string) => Promise<boolean>;
   now?: () => number;
 }
 
 const RADAR_EVERY_MS = 10 * 60_000;
+const PREMIUM_EVERY_MS = 6 * 3_600_000;
 /** One run never sends more than this, to stay far below Telegram's limits. */
 const MAX_MESSAGES_PER_RUN = 60;
 const MAX_RADAR_PER_CHAT = 3;
@@ -100,6 +104,25 @@ export async function runTelegramAlerts(deps: AlertDeps): Promise<{ alerts: numb
         }
       }
       if (tokens.length || !lastRun) await deps.state.set("tg:radar:at", now());
+    }
+  }
+  // ---- stock token premiums: tokens trading away from their reference price, at most once per chat per 6 hours
+  const premiumAlerts = of("premium");
+  if (premiumAlerts.length && deps.stocks) {
+    const data = await deps.stocks().catch(() => null);
+    const tokens = ((data?.tokens ?? []) as Array<any>).filter((t) => Number.isFinite(Number(t.premiumPct)));
+    for (const a of premiumAlerts) {
+      const hits = tokens.filter((t) => Math.abs(Number(t.premiumPct)) >= (a.value ?? 0)).sort((x, y) => Math.abs(Number(y.premiumPct)) - Math.abs(Number(x.premiumPct))).slice(0, 6);
+      if (!hits.length) continue;
+      const key = `tg:premium:${a.chatId}`;
+      if (now() - ((await deps.state.get<number>(key)) ?? 0) < PREMIUM_EVERY_MS) continue;
+      await send(a.chatId, [
+        `Splice alert: ${describeAlert(a)}.`,
+        ...hits.map((t) => `${t.symbol}  DEX ${tgUsd(t.dexPriceUsd)} vs ${tgUsd(t.referencePriceUsd)}  ${Number(t.premiumPct) > 0 ? "+" : ""}${Number(t.premiumPct).toFixed(2)}%${t.referenceSource === "last-close" ? " (last close)" : ""}`),
+        data?.session === "closed" ? "US market closed: the reference is the last close, so gaps mean less." : "",
+        "spliceloom.com/stocks · not financial advice",
+      ].filter(Boolean).join("\n"));
+      await deps.state.set(key, now());
     }
   }
   return { alerts: alerts.length, sent };

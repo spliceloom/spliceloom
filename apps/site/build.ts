@@ -16,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./src/markdown.ts";
-import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderBot, renderAgents, renderAgentPage, DEFAULT_AGENTS_URL, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
+import { docLoc, href, placeOf, renderBlogIndex, renderBlogPost, renderBrand, renderDocPage, renderLanding, renderNotFound, renderRegistry, renderToken, renderLive, renderBot, renderProof, renderAgents, renderAgentPage, DEFAULT_AGENTS_URL, renderAsk, renderStocks, renderScreener, renderWallet, renderExplain, renderEmbed, renderWidgets, type BlogPost, type NavGroup, type SiteConfig } from "./src/pages.ts";
 import { loadProviders } from "./src/providers.ts";
 import { loadSnapshot, type RegistrySnapshot, type SkillView } from "./src/registry.ts";
 import { BROKER_CAPABILITIES } from "../../packages/spec/dist/index.js";
@@ -278,6 +278,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   site.write("explain.html", renderExplain(config));
   site.write("widgets.html", renderWidgets(config));
   site.write("bot.html", renderBot(config));
+  site.write("proof.html", renderProof(config));
   // Embeddable card: the only path other sites may frame (see public/_headers).
   site.write("embed/splice.html", renderEmbed(config));
   const posts = loadPosts(config);
@@ -286,7 +287,7 @@ export async function buildSite(options: BuildOptions): Promise<BuildResult> {
   // Earlier docs URLs on the site (spliceloom.com/docs/…, /skills/…) move to the docs host.
   site.write("_redirects", [`/docs ${docsBase}/ 301`, `/docs/introduction ${docsBase}/ 301`, `/docs/:slug ${docsBase}/:slug 301`, `/skills/:name ${docsBase}/skills/:name 301`, ""].join("\n"));
   site.write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${siteBase}/sitemap.xml\n`);
-  site.write("sitemap.xml", sitemap(siteBase, ["", "live", "stocks", "screener", "wallet", "explain", "ask", "token", "widgets", "bot", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
+  site.write("sitemap.xml", sitemap(siteBase, ["", "live", "stocks", "screener", "wallet", "explain", "ask", "token", "proof", "widgets", "bot", "registry", "blog", ...posts.map((p) => `blog/${p.slug}`), "brand"]));
 
   // ---- the docs host: docs at the root (introduction is its home page), skill pages under skills/
   const docs = outputDir(options.docsOut);
